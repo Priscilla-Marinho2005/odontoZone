@@ -1,0 +1,96 @@
+@import url('https://fonts.googleapis.com/css2?family=Blinker:wght@100;200;300;400;600;700;800;900&family=Poppins:ital,wght@0,100;0,200;0,300;0,400;0,500;0,600;0,700;0,800;0,900;1,100;1,200;1,300;1,400;1,500;1,600;1,700;1,800;1,900&display=swap');
+
+@import "tailwindcss";
+
+/* ---------- Tokens (Tailwind v4) ---------- */
+@theme {
+  --font-sans: "Poppins", ui-sans-serif, system-ui, sans-serif;
+  --font-bold: "Blinker", ui-sans-serif, system-ui, sans-serif;
+
+  /* Cores principais */
+  --color-navy: #053647;
+  --color-sky: #079ed4;
+  --color-teal: #018295;
+
+  /* Derivadas */
+  --color-navy-deep: #03222d;
+  --color-navy-soft: #0b4a60;
+  --color-active: #a8c8d6;
+  --color-surface: #f3f7f8;
+  --color-line: #dbe5e8;
+  --color-ink: #0d2c38;
+  --color-muted: #6b8590;
+  --color-danger: #e5484d;
+  --color-mint: #19d3a2;
+
+  /* Status da agenda */
+  --color-st-agendado: #5f7a86;
+  --color-st-confirmado: #0687b5;
+  --color-st-atendimento: #018295;
+  --color-st-concluido: #138a5e;
+  --color-st-atrasado: #b36b00;
+  --color-st-cancelado: #d13b40;
+  --color-st-retorno: #6d4fe0;
+
+  /* Animações */
+  --animate-fade-in: fade-in 0.5s ease-out both;
+  --animate-bar-grow: bar-grow 0.9s cubic-bezier(0.22, 1, 0.36, 1) both;
+  --animate-draw: draw 1.4s ease-out both;
+  --animate-area-in: area-in 1.2s ease-out 0.3s both;
+  --animate-pulse-dot: pulse-dot 2s ease-in-out infinite;
+
+  @keyframes fade-in {
+    from { opacity: 0; transform: translateY(6px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes bar-grow {
+    from { transform: scaleX(0); }
+    to   { transform: scaleX(1); }
+  }
+  @keyframes draw {
+    from { stroke-dashoffset: 1; }
+    to   { stroke-dashoffset: 0; }
+  }
+  @keyframes area-in {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+  }
+  @keyframes pulse-dot {
+    0%, 100% { box-shadow: 0 0 0 0 rgb(229 72 77 / 0.5); }
+    50%      { box-shadow: 0 0 0 5px rgb(229 72 77 / 0); }
+  }
+}
+
+/* ---------- Base ---------- */
+html, body, #root { height: 100%; }
+
+body {
+  margin: 0;
+  font-family: var(--font-sans);
+  color: var(--color-ink);
+  background: var(--color-surface);
+}
+
+/* Fundo da sidebar */
+.sidebar-bg {
+  background: linear-gradient(180deg, var(--color-navy) 0%, var(--color-navy-deep) 100%);
+}
+
+/* Transição suave da sidebar recolhendo */
+.sidebar-transition {
+  transition: width 0.3s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* Barra do funil */
+.bar-fill {
+  transform-origin: left;
+  animation: var(--animate-bar-grow);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-delay: 0ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
