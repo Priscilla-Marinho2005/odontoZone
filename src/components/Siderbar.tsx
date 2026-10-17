@@ -85,7 +85,7 @@ export default function Sidebar({ active, onNavigate }: SidebarProps) {
         src="/IconeLogoSemFundo.png"
         alt=""
         aria-hidden="true"
-        className="pointer-events-none absolute -bottom-28 -left-26 w-110 max-w-none opacity-[0.06]"
+        className="pointer-events-none absolute -bottom-28 -left-26 w-110 max-w-none opacity-[0.2]"
       />
 
       {/* Header */}
@@ -150,8 +150,8 @@ export default function Sidebar({ active, onNavigate }: SidebarProps) {
             <li key={id}>
               <button
                 title={label}
-                className={`flex w-full cursor-pointer items-center gap-3 rounded-lg px-3 py-2 text-[13px] transition hover:bg-surface focus-visible:outline-2 focus-visible:outline-sky ${
-                  danger ? "text-danger" : "text-muted hover:text-ink"
+                className={`flex w-full cursor-pointer items-center gap-3 rounded-lg px-3 py-2 text-[13px] transition hover:bg-navy/20 focus-visible:outline-2 focus-visible:outline-sky ${
+                  danger ? "text-danger" : "text-navy hover:text-ink"
                 } ${collapsed ? "lg:justify-center lg:px-0" : ""}`}
               >
                 <Icon size={16} className="shrink-0" />
