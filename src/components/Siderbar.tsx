@@ -52,17 +52,17 @@ export default function Sidebar({ active, onNavigate }: SidebarProps) {
 
   return (
     <>
-      <div className="fixed inset-x-0 top-0 z-30 flex h-14 items-center gap-3 bg-navy px-4 text-white lg:hidden">
+      <div className="fixed inset-x-0 top-0 z-30 flex h-14 items-center gap-3 border-b border-line bg-white px-4 text-ink lg:hidden">
         <button
           type="button"
           onClick={() => setOpen(true)}
           aria-label="Abrir menu"
-          className="grid size-9 cursor-pointer place-items-center rounded-md hover:bg-white/10"
+          className="grid size-9 cursor-pointer place-items-center rounded-md hover:bg-surface"
         >
           <LuMenu size={20} />
         </button>
         <p className="text-[15px] font-semibold">
-          Odonto<span className="font-medium text-white/70">Zone</span>
+          Odonto<span className="font-medium text-muted">Zone</span>
         </p>
       </div>
 
@@ -76,7 +76,7 @@ export default function Sidebar({ active, onNavigate }: SidebarProps) {
       )}
 
     <aside
-      className={`sidebar-bg sidebar-transition fixed inset-y-0 left-0 z-50 flex h-screen w-64 shrink-0 flex-col overflow-hidden text-white lg:static ${
+      className={`sidebar-bg sidebar-transition fixed inset-y-0 left-0 z-50 flex h-screen w-64 shrink-0 flex-col overflow-hidden text-ink lg:static ${
         open ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
       } ${collapsed ? "lg:w-18" : "lg:w-59"}`}
     >
@@ -85,7 +85,7 @@ export default function Sidebar({ active, onNavigate }: SidebarProps) {
         src="/IconeLogoSemFundo.png"
         alt=""
         aria-hidden="true"
-        className="pointer-events-none absolute -bottom-28 -left-26 w-110 max-w-none opacity-10"
+        className="pointer-events-none absolute -bottom-28 -left-26 w-110 max-w-none opacity-[0.06]"
       />
 
       {/* Header */}
@@ -94,16 +94,16 @@ export default function Sidebar({ active, onNavigate }: SidebarProps) {
           <img src="/IconeLogoSemFundo.png" alt="OdontoZone" className="h-9 w-9 shrink-0 object-contain" />
           <div className={`leading-tight whitespace-nowrap ${collapsed ? "lg:hidden" : ""}`}>
             <p className="text-[14px] font-semibold">
-              Odonto<span className="font-medium text-white/70">Zone</span>
+              Odonto<span className="font-medium text-muted">Zone</span>
             </p>
-            <p className="text-[11px] text-white/60">Plataforma</p>
+            <p className="text-[11px] text-muted">Plataforma</p>
           </div>
         </div>
         <button
           type="button"
           onClick={() => setOpen(false)}
           aria-label="Fechar menu"
-          className="grid size-7 cursor-pointer place-items-center rounded-md text-white/70 hover:bg-white/10 lg:hidden"
+          className="grid size-7 cursor-pointer place-items-center rounded-md text-muted hover:bg-surface lg:hidden"
         >
           <LuX size={18} />
         </button>
@@ -111,14 +111,14 @@ export default function Sidebar({ active, onNavigate }: SidebarProps) {
           type="button"
           onClick={() => setCollapsed((c) => !c)}
           aria-label={collapsed ? "Expandir menu" : "Recolher menu"}
-          className="hidden h-7 w-7 shrink-0 cursor-pointer place-items-center rounded-md text-white/70 transition hover:bg-white/10 hover:text-white focus-visible:outline-2 focus-visible:outline-sky lg:grid"
+          className="hidden h-7 w-7 shrink-0 cursor-pointer place-items-center rounded-md text-muted transition hover:bg-surface hover:text-ink focus-visible:outline-2 focus-visible:outline-sky lg:grid"
         >
           {collapsed ? <LuChevronsRight size={18} /> : <LuChevronsLeft size={18} />}
         </button>
       </div>
 
       {/* Navegação */}
-      <nav className="relative flex-1 overflow-y-auto border-t border-white/10 px-3 pt-4 pb-2">
+      <nav className="relative flex-1 overflow-y-auto border-t border-line px-3 pt-4 pb-2">
         <ul className="space-y-1">
           {menuItems.map(({ id, label, icon: Icon }) => {
             const isActive = active === id;
@@ -130,8 +130,8 @@ export default function Sidebar({ active, onNavigate }: SidebarProps) {
                   aria-current={isActive ? "page" : undefined}
                   className={`flex w-full cursor-pointer items-center gap-3 rounded-lg px-3 py-2.5 text-left text-[14px] transition focus-visible:outline-2 focus-visible:outline-sky ${
                     isActive
-                      ? "bg-active font-medium text-navy"
-                      : "font-normal text-white/80 hover:bg-white/8 hover:text-white"
+                      ? "bg-teal/10 font-medium text-teal"
+                      : "font-normal text-muted hover:bg-surface hover:text-ink"
                   } ${collapsed ? "lg:justify-center lg:px-0" : ""}`}
                 >
                   <Icon size={18} className="shrink-0" />
@@ -144,14 +144,14 @@ export default function Sidebar({ active, onNavigate }: SidebarProps) {
       </nav>
 
       {/* Rodapé */}
-      <div className="relative border-t border-white/10 px-3 py-3">
+      <div className="relative border-t border-line px-3 py-3">
         <ul className="space-y-0.5">
           {footerItems.map(({ id, label, icon: Icon, danger }) => (
             <li key={id}>
               <button
                 title={label}
-                className={`flex w-full cursor-pointer items-center gap-3 rounded-lg px-3 py-2 text-[13px] transition hover:bg-white/8 focus-visible:outline-2 focus-visible:outline-sky ${
-                  danger ? "text-[#ff7b7f]" : "text-white/75 hover:text-white"
+                className={`flex w-full cursor-pointer items-center gap-3 rounded-lg px-3 py-2 text-[13px] transition hover:bg-surface focus-visible:outline-2 focus-visible:outline-sky ${
+                  danger ? "text-danger" : "text-muted hover:text-ink"
                 } ${collapsed ? "lg:justify-center lg:px-0" : ""}`}
               >
                 <Icon size={16} className="shrink-0" />

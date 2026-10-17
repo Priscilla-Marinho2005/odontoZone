@@ -73,7 +73,8 @@ body {
 
 /* Fundo da sidebar */
 .sidebar-bg {
-  background: linear-gradient(180deg, var(--color-navy) 0%, var(--color-navy-deep) 100%);
+  background: #ffffff;
+  border-right: 1px solid var(--color-line);
 }
 
 /* Transição suave da sidebar recolhendo */
