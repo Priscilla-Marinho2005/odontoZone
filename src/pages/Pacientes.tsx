@@ -1,8 +1,9 @@
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import type { Dispatch, ReactNode, SetStateAction } from "react";
 import {
-  LuArrowLeft, LuDownload, LuEllipsis, LuEye, LuPencil, LuPlus, LuSearch, LuSlidersHorizontal, LuX,
+  LuArrowLeft, LuCheck, LuDownload, LuEllipsis, LuEye, LuPencil, LuPlus, LuSearch, LuSlidersHorizontal, LuX,
 } from "react-icons/lu";
+import { FaWhatsapp } from "react-icons/fa";
 
 const treatments = ["Avaliação", "Limpeza", "Clareamento", "Restauração", "Canal", "Implante", "Ortodontia"] as const;
 const responsibles = ["Dra. Priscila", "Dr. Rafael"] as const;
@@ -469,15 +470,6 @@ function StatusBadge({ status }: { status: Status }) {
   );
 }
 
-function Section({ title, children }: { title: string; children: ReactNode }) {
-  return (
-    <section className="rounded-lg border border-line bg-white px-5 py-4">
-      <h2 className="text-[15px] font-semibold">{title}</h2>
-      <div className="mt-4">{children}</div>
-    </section>
-  );
-}
-
 function Info({ label, value }: { label: string; value: string }) {
   return (
     <div>
@@ -679,129 +671,336 @@ function PatientForm({
   );
 }
 
+const recordTabs = ["Resumo", "Histórico", "Tratamentos", "Orçamentos", "Financeiro", "Tarefas", "Mensagens", "Anotações"] as const;
+type RecordTab = (typeof recordTabs)[number];
+
+function initials(name: string) {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  const letters = parts.slice(0, 2).map((part) => part[0]?.toUpperCase() ?? "");
+  return letters.join("") || "P";
+}
+
+function shortDate(iso: string) {
+  if (!iso) return "—";
+  const date = new Date(`${iso}T12:00:00`);
+  if (Number.isNaN(date.getTime())) return iso;
+  const today = new Date();
+  const sameDay = date.getDate() === today.getDate()
+    && date.getMonth() === today.getMonth()
+    && date.getFullYear() === today.getFullYear();
+  if (sameDay) return "Hoje";
+  return date.toLocaleDateString("pt-BR", { day: "2-digit", month: "short" }).replace(".", "");
+}
+
+function timelineLabel(iso: string) {
+  if (!iso) return "—";
+  const date = new Date(`${iso}T12:00:00`);
+  if (Number.isNaN(date.getTime())) return iso;
+  const today = new Date();
+  const sameDay = date.getDate() === today.getDate()
+    && date.getMonth() === today.getMonth()
+    && date.getFullYear() === today.getFullYear();
+  return sameDay ? "Hoje" : formatDate(iso);
+}
+
+function whatsappHref(phone: string) {
+  const digits = phone.replace(/\D/g, "");
+  if (!digits) return null;
+  const withCountry = digits.startsWith("55") ? digits : `55${digits}`;
+  return `https://wa.me/${withCountry}`;
+}
+
 function RecordView({
   patient,
   onBack,
   onEdit,
-  onDownload,
 }: {
   patient: Patient;
   onBack: () => void;
   onEdit: () => void;
-  onDownload: () => void;
 }) {
   const pending = pendingValue(patient);
+  const paidRatio = patient.value > 0 ? Math.min(patient.paid / patient.value, 1) : 0;
+  const nextVisit = patient.upcoming[0];
+  const [tab, setTab] = useState<RecordTab>("Resumo");
+  const [actionDone, setActionDone] = useState(false);
+  const [tasks, setTasks] = useState<string[]>([]);
+  const [taskDraft, setTaskDraft] = useState("");
+  const [extraNotes, setExtraNotes] = useState<string[]>([]);
+  const [noteDraft, setNoteDraft] = useState("");
+  const chat = whatsappHref(patient.phone);
+
+  const timeline = [
+    ...(nextVisit
+      ? [{ key: `next-${nextVisit.date}`, when: timelineLabel(nextVisit.date), title: `${nextVisit.procedure} agendado` }]
+      : []),
+    ...[...patient.history]
+      .sort((a, b) => b.date.localeCompare(a.date))
+      .map((item) => ({
+        key: `${item.date}-${item.procedure}`,
+        when: timelineLabel(item.date),
+        title: item.procedure,
+      })),
+    ...extraNotes.map((note, index) => ({ key: `note-${index}`, when: "Hoje", title: note })),
+  ];
+
+  function addTask() {
+    const title = taskDraft.trim();
+    if (!title) return;
+    setTasks((current) => [title, ...current]);
+    setTaskDraft("");
+    setTab("Tarefas");
+  }
+
+  function addNote() {
+    const title = noteDraft.trim();
+    if (!title) return;
+    setExtraNotes((current) => [title, ...current]);
+    setNoteDraft("");
+    setTab("Resumo");
+  }
 
   return (
     <div className="mx-auto max-w-7xl animate-fade-in">
-      <button type="button" onClick={onBack} className="inline-flex items-center gap-1.5 text-[13px] font-medium text-teal hover:underline">
+      <button type="button" onClick={onBack} className="inline-flex items-center gap-1.5 text-[13px] font-medium text-muted hover:text-teal">
         <LuArrowLeft size={15} /> Voltar para pacientes
       </button>
 
-      <header className="mt-3 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-        <div>
-          <p className="text-[11px] font-semibold text-teal">PRONTUÁRIO</p>
-          <h1 className="mt-0.5 text-[28px] font-semibold leading-tight">{patient.name}</h1>
-          <div className="mt-2 flex flex-wrap items-center gap-2">
-            <p className="text-[13px] text-muted">Protocolo {patient.protocol}</p>
-            <StatusBadge status={patient.status} />
+      <header className="mt-4 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+        <div className="flex items-center gap-3">
+          <span className="grid size-12 shrink-0 place-items-center rounded-full bg-teal text-[15px] font-semibold text-white">
+            {initials(patient.name)}
+          </span>
+          <div>
+            <div className="flex flex-wrap items-center gap-2">
+              <h1 className="text-[26px] font-semibold leading-tight">{patient.name}</h1>
+              <StatusBadge status={patient.status} />
+            </div>
+            <p className="mt-0.5 text-[13px] text-muted">
+              {patient.phone || "Sem telefone"} · {patient.treatment} · {patient.stage}
+            </p>
           </div>
         </div>
         <div className="flex flex-wrap gap-2">
-          <button type="button" onClick={onEdit} className="inline-flex items-center gap-2 rounded-md border border-line bg-white px-4 py-2.5 text-[13px] font-medium hover:bg-surface">
-            <LuPencil size={15} /> Editar paciente
+          <button type="button" onClick={onEdit} className="inline-flex items-center gap-2 rounded-lg border border-line bg-white px-4 py-2.5 text-[13px] font-medium hover:bg-surface">
+            <LuPencil size={15} /> Editar
           </button>
-          <button type="button" onClick={onDownload} className="inline-flex items-center gap-2 rounded-md bg-teal px-4 py-2.5 text-[13px] font-medium text-white hover:bg-navy">
-            <LuDownload size={15} /> Baixar prontuário
+          {chat ? (
+            <a href={chat} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 rounded-lg bg-[#1fa855] px-4 py-2.5 text-[13px] font-medium text-white hover:bg-[#188a46]">
+              <FaWhatsapp size={15} /> WhatsApp
+            </a>
+          ) : (
+            <span className="inline-flex items-center gap-2 rounded-lg bg-line px-4 py-2.5 text-[13px] font-medium text-muted">
+              <FaWhatsapp size={15} /> WhatsApp
+            </span>
+          )}
+          <button type="button" onClick={() => setTab("Tarefas")} className="inline-flex items-center gap-2 rounded-lg bg-teal px-4 py-2.5 text-[13px] font-medium text-white hover:bg-navy">
+            <LuPlus size={15} /> Nova tarefa
           </button>
         </div>
       </header>
 
-      <div className="mt-5 grid gap-4">
-        <Section title="Paciente">
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            <Info label="Nome" value={patient.name} />
-            <Info label="Número do protocolo" value={patient.protocol} />
-            <Info label="Telefone" value={patient.phone} />
-            <Info label="E-mail" value={patient.email} />
-            <Info label="Data de nascimento" value={formatDate(patient.birthDate)} />
-            <Info label="Observações" value={patient.notes} />
+      <section className="mt-5 grid overflow-hidden rounded-xl border border-line bg-white sm:grid-cols-2 lg:grid-cols-6">
+        {[
+          ["Último atendimento", shortDate(patient.lastVisit)],
+          ["Próximo retorno", nextVisit ? `${shortDate(nextVisit.date)}, ${nextVisit.time}` : "—"],
+          ["Tratamento", patient.treatment],
+          ["Valor", formatMoney(patient.value)],
+          ["Pago", formatMoney(patient.paid)],
+          ["Pendente", formatMoney(pending)],
+        ].map(([label, value]) => (
+          <div key={label} className="border-line px-4 py-3.5 not-last:border-b sm:not-last:border-r lg:not-last:border-b-0">
+            <p className="text-[10px] font-semibold tracking-[0.08em] text-muted uppercase">{label}</p>
+            <p className="mt-1 text-[15px] font-semibold">{value}</p>
           </div>
-        </Section>
+        ))}
+      </section>
 
-        <Section title="Tratamento">
-          <div className="grid gap-4 rounded-md bg-teal/10 px-3 py-3 sm:grid-cols-2 lg:grid-cols-4">
-            <Info label="Tratamento atual" value={patient.treatment} />
-            <Info label="Etapa atual" value={patient.stage} />
-            <Info label="Responsável" value={patient.responsible} />
-            <Info label="Valor" value={formatMoney(patient.value)} />
+      <div className="mt-5 flex gap-5 overflow-x-auto border-b border-line">
+        {recordTabs.map((item) => (
+          <button
+            key={item}
+            type="button"
+            onClick={() => setTab(item)}
+            className={`shrink-0 border-b-2 pb-2.5 text-[13px] font-medium ${tab === item ? "border-teal text-ink" : "border-transparent text-muted hover:text-ink"}`}
+          >
+            {item}
+          </button>
+        ))}
+      </div>
+
+      {tab === "Resumo" && (
+        <div className="mt-5 grid items-start gap-4 lg:grid-cols-[minmax(0,1.4fr)_minmax(280px,0.8fr)]">
+          <section className="rounded-xl border border-line bg-white px-5 py-4">
+            <h2 className="text-[15px] font-semibold">Linha do tempo</h2>
+            {timeline.length === 0 ? (
+              <p className="mt-4 text-[13px] text-muted">Nenhum registro ainda.</p>
+            ) : (
+              <ol className="mt-4 space-y-0">
+                {timeline.map((item, index) => (
+                  <li key={item.key} className="grid grid-cols-[88px_16px_1fr] gap-3">
+                    <p className="pt-0.5 text-right text-[12px] text-muted">{item.when}</p>
+                    <div className="flex flex-col items-center">
+                      <span className={`mt-1 size-2.5 rounded-full ${index === 0 ? "bg-teal" : "bg-line"}`} />
+                      {index < timeline.length - 1 && <span className="w-px flex-1 bg-line" />}
+                    </div>
+                    <p className={`pb-5 text-[13px] ${index === 0 ? "font-semibold" : ""}`}>{item.title}</p>
+                  </li>
+                ))}
+              </ol>
+            )}
+            <form
+              className="mt-1 flex gap-2"
+              onSubmit={(event) => {
+                event.preventDefault();
+                addNote();
+              }}
+            >
+              <input
+                value={noteDraft}
+                onChange={(event) => setNoteDraft(event.target.value)}
+                placeholder="Novo registro"
+                className="min-w-0 flex-1 rounded-lg border border-line px-3 py-2 text-[13px] outline-none focus:border-teal"
+              />
+              <button type="submit" className="inline-flex items-center gap-1.5 rounded-lg border border-line px-3 py-2 text-[13px] font-medium hover:bg-surface">
+                <LuPlus size={14} /> Adicionar registro
+              </button>
+            </form>
+          </section>
+
+          <div className="grid gap-4">
+            <section className="rounded-xl border border-line bg-white px-5 py-4">
+              <h2 className="text-[15px] font-semibold">Próxima ação</h2>
+              <p className={`mt-3 text-[14px] font-medium ${actionDone ? "text-muted line-through" : ""}`}>
+                {patient.nextAction || "Nenhuma ação pendente"}
+              </p>
+              <p className="mt-1 text-[12px] text-muted">Responsável: {patient.responsible}</p>
+              <button
+                type="button"
+                disabled={actionDone || !patient.nextAction}
+                onClick={() => setActionDone(true)}
+                className="mt-4 w-full rounded-lg bg-teal px-4 py-2.5 text-[13px] font-medium text-white hover:bg-navy disabled:cursor-default disabled:bg-line disabled:text-muted"
+              >
+                {actionDone ? "Concluída" : "Marcar como concluída"}
+              </button>
+            </section>
+
+            <section className="rounded-xl border border-line bg-white px-5 py-4">
+              <h2 className="text-[15px] font-semibold">Financeiro</h2>
+              <div className="mt-4 h-2 overflow-hidden rounded-full bg-line">
+                <div className="h-full rounded-full bg-teal" style={{ width: `${paidRatio * 100}%` }} />
+              </div>
+              <div className="mt-3 flex items-center justify-between gap-3 text-[12px] text-muted">
+                <span>{formatMoney(patient.paid)} recebido</span>
+                <span>{formatMoney(pending)} pendente</span>
+              </div>
+            </section>
           </div>
-        </Section>
+        </div>
+      )}
 
-        <Section title="Histórico">
+      {tab === "Histórico" && (
+        <section className="mt-5 rounded-xl border border-line bg-white px-5 py-4">
+          <h2 className="text-[15px] font-semibold">Atendimentos</h2>
           {patient.history.length === 0 ? (
-            <p className="text-[13px] text-muted">Nenhum atendimento registrado.</p>
+            <p className="mt-3 text-[13px] text-muted">Nenhum atendimento registrado.</p>
           ) : (
-            <ul className="space-y-3">
+            <ul className="mt-4 space-y-3">
               {patient.history.map((item) => (
-                <li key={`${item.date}-${item.procedure}`} className="rounded-md border border-line px-4 py-3">
-                  <div className="grid gap-3 sm:grid-cols-3">
-                    <Info label="Data" value={formatDate(item.date)} />
-                    <Info label="Procedimento" value={item.procedure} />
-                    <Info label="Profissional" value={item.professional} />
-                  </div>
-                  <div className="mt-3">
-                    <Info label="Observações" value={item.notes} />
-                  </div>
+                <li key={`${item.date}-${item.procedure}`} className="rounded-lg border border-line px-4 py-3">
+                  <p className="text-[13px] font-semibold">{item.procedure}</p>
+                  <p className="mt-1 text-[12px] text-muted">{formatDate(item.date)} · {item.professional}</p>
+                  {item.notes && <p className="mt-2 text-[13px]">{item.notes}</p>}
                 </li>
               ))}
             </ul>
           )}
-        </Section>
+        </section>
+      )}
 
-        <Section title="Agenda">
-          <div className="grid gap-5 lg:grid-cols-2">
-            <div>
-              <h3 className="text-[13px] font-semibold">Próximos atendimentos</h3>
-              {patient.upcoming.length === 0 ? (
-                <p className="mt-2 text-[13px] text-muted">Nenhum horário futuro.</p>
-              ) : (
-                <ul className="mt-3 space-y-2">
-                  {patient.upcoming.map((item) => (
-                    <li key={`${item.date}-${item.time}`} className="rounded-md bg-surface px-3 py-2">
-                      <p className="text-[13px] font-semibold">{formatDate(item.date)} · {item.time}</p>
-                      <p className="text-[12px] text-muted">{item.procedure} · {item.professional}</p>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
-            <div>
-              <h3 className="text-[13px] font-semibold">Histórico de consultas</h3>
-              {patient.consultations.length === 0 ? (
-                <p className="mt-2 text-[13px] text-muted">Nenhuma consulta registrada.</p>
-              ) : (
-                <ul className="mt-3 space-y-2">
-                  {patient.consultations.map((item) => (
-                    <li key={`${item.date}-${item.time}-${item.procedure}`} className="border-l-2 border-line pl-3">
-                      <p className="text-[13px] font-semibold">{formatDate(item.date)} · {item.time}</p>
-                      <p className="text-[12px] text-muted">{item.procedure} · {item.professional}</p>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
+      {tab === "Tratamentos" && (
+        <section className="mt-5 rounded-xl border border-line bg-white px-5 py-4">
+          <h2 className="text-[15px] font-semibold">{patient.treatment}</h2>
+          <div className="mt-4 grid gap-4 sm:grid-cols-3">
+            <Info label="Etapa" value={patient.stage} />
+            <Info label="Funil" value={patient.funnelStage} />
+            <Info label="Responsável" value={patient.responsible} />
           </div>
-        </Section>
+        </section>
+      )}
 
-        <Section title="Financeiro">
-          <div className="grid gap-4 sm:grid-cols-3">
+      {tab === "Orçamentos" && (
+        <section className="mt-5 rounded-xl border border-line bg-white px-5 py-4">
+          <h2 className="text-[15px] font-semibold">Orçamento do tratamento</h2>
+          <div className="mt-4 grid gap-4 sm:grid-cols-3">
+            <Info label="Tratamento" value={patient.treatment} />
+            <Info label="Valor" value={formatMoney(patient.value)} />
+            <Info label="Situação" value={pending === 0 ? "Quitado" : "Em aberto"} />
+          </div>
+        </section>
+      )}
+
+      {tab === "Financeiro" && (
+        <section className="mt-5 rounded-xl border border-line bg-white px-5 py-4">
+          <h2 className="text-[15px] font-semibold">Pagamentos</h2>
+          <div className="mt-4 grid gap-4 sm:grid-cols-3">
             <Info label="Valor total" value={formatMoney(patient.value)} />
-            <Info label="Valor pago" value={formatMoney(patient.paid)} />
-            <Info label="Valor pendente" value={formatMoney(pending)} />
+            <Info label="Recebido" value={formatMoney(patient.paid)} />
+            <Info label="Pendente" value={formatMoney(pending)} />
           </div>
-        </Section>
-      </div>
+        </section>
+      )}
+
+      {tab === "Tarefas" && (
+        <section className="mt-5 rounded-xl border border-line bg-white px-5 py-4">
+          <h2 className="text-[15px] font-semibold">Tarefas</h2>
+          <form
+            className="mt-4 flex gap-2"
+            onSubmit={(event) => {
+              event.preventDefault();
+              addTask();
+            }}
+          >
+            <input
+              value={taskDraft}
+              onChange={(event) => setTaskDraft(event.target.value)}
+              placeholder="Descreva a tarefa"
+              className="min-w-0 flex-1 rounded-lg border border-line px-3 py-2 text-[13px] outline-none focus:border-teal"
+            />
+            <button type="submit" className="rounded-lg bg-teal px-4 py-2 text-[13px] font-medium text-white hover:bg-navy">
+              Adicionar
+            </button>
+          </form>
+          <ul className="mt-4 space-y-2">
+            {patient.nextAction && (
+              <li className="flex items-center gap-2 rounded-lg bg-surface px-3 py-2 text-[13px]">
+                <LuCheck size={14} className="text-teal" />
+                <span className={actionDone ? "text-muted line-through" : ""}>{patient.nextAction}</span>
+              </li>
+            )}
+            {tasks.map((task) => (
+              <li key={task} className="rounded-lg bg-surface px-3 py-2 text-[13px]">{task}</li>
+            ))}
+          </ul>
+        </section>
+      )}
+
+      {tab === "Mensagens" && (
+        <section className="mt-5 rounded-xl border border-line bg-white px-5 py-4">
+          <h2 className="text-[15px] font-semibold">Contato</h2>
+          <div className="mt-4 grid gap-4 sm:grid-cols-2">
+            <Info label="Telefone" value={patient.phone} />
+            <Info label="E-mail" value={patient.email} />
+          </div>
+        </section>
+      )}
+
+      {tab === "Anotações" && (
+        <section className="mt-5 rounded-xl border border-line bg-white px-5 py-4">
+          <h2 className="text-[15px] font-semibold">Anotações</h2>
+          <p className="mt-3 text-[13px]">{patient.notes || "Nenhuma anotação."}</p>
+        </section>
+      )}
     </div>
   );
 }
@@ -1035,10 +1234,10 @@ export default function Pacientes({
     <main className="min-w-0 flex-1 overflow-y-auto bg-surface px-4 py-5 sm:px-8 sm:py-6">
       {viewing ? (
         <RecordView
+          key={viewing.protocol}
           patient={viewing}
           onBack={() => setViewingProtocol(null)}
           onEdit={() => openEdit(viewing)}
-          onDownload={() => downloadRecord(viewing)}
         />
       ) : (
         <div className="mx-auto max-w-7xl animate-fade-in">
