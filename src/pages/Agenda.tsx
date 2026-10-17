@@ -128,7 +128,7 @@ export default function Agenda({ onOpenPatient }: { onOpenPatient: (protocol: st
   const { patients, setPatients } = usePatients();
   const today = isoDate(new Date());
   const [cursor, setCursor] = useState(() => parseIso(today));
-  const [view, setView] = useState<View>("dia");
+  const [view, setView] = useState<View>("mes");
   const [gap, setGap] = useState<Gap>("Não possui próximo atendimento");
 
   const events = useMemo(() => {
@@ -388,7 +388,7 @@ function DayList({
   return (
     <section className="mt-4 overflow-hidden rounded-lg border border-line bg-white">
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[720px] text-left text-[13px]">
+        <table className="w-full min-w-180 text-left text-[13px]">
           <thead>
             <tr className="border-b border-line bg-surface text-[11px] font-medium text-muted">
               <th className="px-4 py-2 font-medium">Horário</th>

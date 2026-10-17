@@ -360,6 +360,22 @@ function nextProtocol(list: Patient[]) {
   return protocol;
 }
 
+const patientFunnelFilters = ["Todos", "Novos", "Em tratamento", "Retorno", "Financeiro"] as const;
+
+function matchesFunnelFilter(patient: Patient, filter: (typeof patientFunnelFilters)[number]) {
+  if (filter === "Todos") return true;
+  if (filter === "Novos") {
+    return patient.funnelStage === "Avaliação"
+      || patient.funnelStage === "Orçamento"
+      || patient.funnelStage === "Aguardando aprovação";
+  }
+  if (filter === "Em tratamento") {
+    return patient.funnelStage === "Tratamento iniciado" || patient.funnelStage === "Em tratamento";
+  }
+  if (filter === "Retorno") return patient.funnelStage === "Retorno";
+  return pendingValue(patient) > 0;
+}
+
 function pendingValue(patient: Pick<Patient, "value" | "paid">) {
   return Math.max(patient.value - patient.paid, 0);
 }
@@ -1060,6 +1076,7 @@ export default function Pacientes({
   const [stageFilter, setStageFilter] = useState("");
   const [responsibleFilter, setResponsibleFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
+  const [funnelFilter, setFunnelFilter] = useState<(typeof patientFunnelFilters)[number]>("Todos");
   const [menu, setMenu] = useState<MenuState | null>(null);
   const [viewingProtocol, setViewingProtocol] = useState<string | null>(openProtocol);
   const [draft, setDraft] = useState<Draft | null>(null);
@@ -1077,12 +1094,13 @@ export default function Pacientes({
         || patient.name.toLowerCase().includes(term)
         || patient.protocol.toLowerCase().includes(term);
       return matchesQuery
+        && matchesFunnelFilter(patient, funnelFilter)
         && (!treatmentFilter || patient.treatment === treatmentFilter)
         && (!stageFilter || patient.stage === stageFilter)
         && (!responsibleFilter || patient.responsible === responsibleFilter)
         && (!statusFilter || patient.status === statusFilter);
     });
-  }, [patients, query, treatmentFilter, stageFilter, responsibleFilter, statusFilter]);
+  }, [patients, query, funnelFilter, treatmentFilter, stageFilter, responsibleFilter, statusFilter]);
 
   const viewing = patients.find((patient) => patient.protocol === viewingProtocol) ?? null;
   const menuPatient = patients.find((patient) => patient.protocol === menu?.protocol) ?? null;
@@ -1325,18 +1343,38 @@ export default function Pacientes({
             </div>
           )}
 
-          <p className="mt-4 text-[12px] text-muted">
-            {filtered.length} de {patients.length} pacientes
-          </p>
+          <section className="mt-4 overflow-hidden rounded-lg border border-line bg-white">
+            <div className="flex flex-col gap-3 bg-linear-to-r from-navy to-navy-soft px-5 py-4 sm:px-7 lg:flex-row lg:items-center lg:justify-between">
+              <div className="flex items-center gap-3">
+                <div>
+                  <h2 className="text-[16px] font-semibold tracking-tight text-white">Pacientes</h2>
+                  <p className="text-[12px] text-white/70">{filtered.length} de {patients.length} pacientes</p>
+                </div>
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {patientFunnelFilters.map((item) => (
+                  <button
+                    key={item}
+                    type="button"
+                    onClick={() => setFunnelFilter(item)}
+                    className={`rounded-full px-3 py-1.5 text-[12px] font-medium cursor-pointer transition ${
+                      funnelFilter === item ? "bg-white text-teal" : "text-white hover:bg-white/20"
+                    }`}
+                  >
+                    {item}
+                  </button>
+                ))}
+              </div>
+            </div>
 
           {filtered.length === 0 ? (
-            <section className="mt-3 rounded-lg border border-line bg-white px-5 py-12 text-center">
+            <div className="px-5 py-12 text-center">
               <p className="text-[14px] font-medium">Nenhum paciente encontrado</p>
               <p className="mt-1 text-[12px] text-muted">Ajuste a pesquisa ou os filtros para ver outros cadastros.</p>
-            </section>
+            </div>
           ) : (
             <>
-              <section className="mt-3 hidden overflow-hidden rounded-lg border border-line bg-white lg:block">
+              <div className="hidden lg:block">
                 <div className="overflow-x-auto">
                   <table className="w-full min-w-245 text-left">
                     <thead>
@@ -1377,9 +1415,9 @@ export default function Pacientes({
                     </tbody>
                   </table>
                 </div>
-              </section>
+              </div>
 
-              <ul className="mt-3 space-y-2 lg:hidden">
+              <ul className="space-y-2 p-3 lg:hidden">
                 {filtered.map((patient) => (
                   <li
                     key={patient.protocol}
@@ -1413,6 +1451,7 @@ export default function Pacientes({
               </ul>
             </>
           )}
+          </section>
         </div>
       )}
 
