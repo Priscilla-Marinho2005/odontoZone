@@ -4,7 +4,7 @@ import Dashboard from "./pages/Dashboard";
 import Pacientes, { PatientsProvider } from "./pages/Pacientes";
 import Funil from "./pages/Funil";
 import Agenda from "./pages/Agenda";
-import Tratamentos from "./pages/Tratamentos";
+import Tratamentos, { TreatmentsProvider } from "./pages/Tratamentos";
 import Orcamentos from "./pages/Orcamentos";
 
 export default function App() {
@@ -14,8 +14,10 @@ export default function App() {
 
   return (
     <PatientsProvider>
+      <TreatmentsProvider>
       <div className="flex h-screen">
         <Sidebar active={page} onNavigate={setPage} />
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col pt-14 lg:pt-0">
         {page === "pacientes" ? (
           <Pacientes openProtocol={openProtocol} onOpened={clearOpen} />
         ) : page === "agenda" ? (
@@ -35,7 +37,9 @@ export default function App() {
         ) : (
           <Dashboard />
         )}
+        </div>
       </div>
+      </TreatmentsProvider>
     </PatientsProvider>
   );
 }

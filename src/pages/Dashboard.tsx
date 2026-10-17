@@ -54,7 +54,7 @@ const agenda: Appointment[] = [
 ];
 
 const funnel: FunnelItem[] = [
-  { label: "Novos leads", value: 32 },
+  { label: "Novos clientes", value: 32 },
   { label: "Avaliações realizadas", value: 24 },
   { label: "Orçamentos enviados", value: 18 },
   { label: "Tratamentos aprovados", value: 11, highlight: true },
@@ -122,41 +122,44 @@ export default function Dashboard() {
 
         {/* Agenda do dia */}
         <Card className="mt-5 overflow-hidden">
-          <div className="flex items-start justify-between px-5 pb-3 pt-4">
-            <div>
-              <h2 className="text-[15px] font-semibold">Agenda do dia</h2>
-              <p className="text-[11px] text-muted">{agenda.length} compromissos hoje</p>
+          <div className="flex items-center justify-between gap-4 bg-linear-to-r from-navy to-navy-soft px-7 py-4">
+            <div className="flex items-center gap-3">
+              <div>
+                <h2 className="text-[16px] font-semibold tracking-tight text-white">Agenda do dia</h2>
+                <p className="text-[12px] text-white/70">{agenda.length} compromissos hoje</p>
+              </div>
             </div>
-            <a href="#" className="text-[12px] font-medium text-teal hover:underline">Ver agenda completa</a>
+            <a href="#" className="text-[12px] font-medium text-white hover:underline">
+              Ver agenda completa
+            </a>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full min-w-170 text-left">
               <thead>
-                <tr className="border-t border-line bg-surface/60 text-[11px] font-medium text-muted">
-                  <th className="px-5 py-2 font-medium">Horário</th>
-                  <th className="px-3 py-2 font-medium">Paciente</th>
-                  <th className="px-3 py-2 font-medium">Tratamento</th>
-                  <th className="px-3 py-2 font-medium">Responsável</th>
-                  <th className="px-5 py-2 font-medium">Status</th>
+                <tr className="border-b border-line bg-surface text-[11px] font-semibold tracking-wide text-muted uppercase">
+                  <th className="px-5 py-2.5 font-semibold">Horário</th>
+                  <th className="px-3 py-2.5 font-semibold">Paciente</th>
+                  <th className="px-3 py-2.5 font-semibold">Tratamento</th>
+                  <th className="px-3 py-2.5 font-semibold">Responsável</th>
+                  <th className="px-5 py-2.5 font-semibold">Status</th>
                 </tr>
               </thead>
               <tbody>
-                {agenda.map((a) => (
+                {agenda.map((a) => {
+                  const cancelled = a.status === "Cancelado";
+                  return (
                   <tr
                     key={`${a.time}-${a.patient}`}
-                    className={`border-t border-line text-[13px] ${
-                      a.status === "Em atendimento" ? "bg-teal/5" : ""
-                    } ${a.status === "Cancelado" ? "text-muted" : ""}`}
+                    className="border-t border-line text-[13px] hover:bg-surface"
                   >
-                    <td className="px-5 py-3 text-[12px] font-semibold tabular-nums">{a.time}</td>
-                    <td className={`px-3 py-3 font-semibold ${a.status === "Cancelado" ? "line-through" : ""}`}>
-                      {a.patient}
-                    </td>
-                    <td className="px-3 py-3">{a.treatment}</td>
-                    <td className="px-3 py-3">{a.responsible}</td>
+                    <td className={`px-5 py-3 text-[12px] font-semibold tabular-nums ${cancelled ? "line-through" : ""}`}>{a.time}</td>
+                    <td className={`px-3 py-3 font-semibold ${cancelled ? "line-through" : ""}`}>{a.patient}</td>
+                    <td className={`px-3 py-3 ${cancelled ? "line-through" : ""}`}>{a.treatment}</td>
+                    <td className={`px-3 py-3 ${cancelled ? "line-through" : ""}`}>{a.responsible}</td>
                     <td className="px-5 py-3"><StatusBadge status={a.status} /></td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           </div>

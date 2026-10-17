@@ -1,7 +1,8 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { LuGripVertical } from "react-icons/lu";
 import { funnelStages, usePatients } from "./Pacientes";
 import type { FunnelStage } from "./Pacientes";
+import { actionsForTreatment, useTreatments } from "./Tratamentos";
 
 type Patient = ReturnType<typeof usePatients>["patients"][number];
 
@@ -47,7 +48,7 @@ export default function Funil({ onOpenPatient }: { onOpenPatient: (protocol: str
           return (
             <section
               key={stage}
-              className={`flex w-[280px] shrink-0 flex-col rounded-lg border bg-white ${
+              className={`flex w-70 shrink-0 flex-col rounded-lg border bg-white ${
                 overStage === stage ? "border-teal" : "border-line"
               }`}
               onDragOver={(event) => {
@@ -117,11 +118,8 @@ function PatientCard({
   onSummary: () => void;
   onNextAction: (action: string) => void;
 }) {
-  const [action, setAction] = useState(patient.nextAction);
-
-  useEffect(() => {
-    setAction(patient.nextAction);
-  }, [patient.nextAction]);
+  const { treatments } = useTreatments();
+  const actions = actionsForTreatment(treatments, patient.treatment);
 
   return (
     <article
@@ -163,16 +161,19 @@ function PatientCard({
       </dl>
       <label className="mt-3 block text-[11px] font-medium text-muted">
         Próxima ação
-        <input
-          value={action}
-          onChange={(event) => setAction(event.target.value)}
-          onBlur={() => onNextAction(action.trim())}
-          onKeyDown={(event) => {
-            if (event.key === "Enter") event.currentTarget.blur();
-          }}
-          placeholder="Definir próxima ação"
+        <select
+          value={patient.nextAction}
+          onChange={(event) => onNextAction(event.target.value)}
           className="mt-1 w-full rounded-md border border-line bg-white px-2 py-1.5 text-[12px] text-ink outline-none focus:border-teal"
-        />
+        >
+          <option value="">Selecione a ação</option>
+          {patient.nextAction && !actions.includes(patient.nextAction) && (
+            <option value={patient.nextAction}>{patient.nextAction}</option>
+          )}
+          {actions.map((action) => (
+            <option key={action} value={action}>{action}</option>
+          ))}
+        </select>
       </label>
       <label className="mt-2 block text-[11px] font-medium text-muted">
         Alterar etapa
@@ -213,7 +214,8 @@ function Summary({
   onMove: (stage: FunnelStage) => void;
   onNextAction: (action: string) => void;
 }) {
-  const [action, setAction] = useState(patient.nextAction);
+  const { treatments } = useTreatments();
+  const actions = actionsForTreatment(treatments, patient.treatment);
   const pending = Math.max(patient.value - patient.paid, 0);
 
   return (
@@ -268,12 +270,19 @@ function Summary({
         </label>
         <label className="mt-3 block text-[11px] font-medium text-muted">
           Próxima ação
-          <input
-            value={action}
-            onChange={(event) => setAction(event.target.value)}
-            onBlur={() => onNextAction(action.trim())}
+          <select
+            value={patient.nextAction}
+            onChange={(event) => onNextAction(event.target.value)}
             className="mt-1 w-full rounded-md border border-line px-3 py-2 text-[13px] outline-none focus:border-teal"
-          />
+          >
+            <option value="">Selecione a ação</option>
+            {patient.nextAction && !actions.includes(patient.nextAction) && (
+              <option value={patient.nextAction}>{patient.nextAction}</option>
+            )}
+            {actions.map((action) => (
+              <option key={action} value={action}>{action}</option>
+            ))}
+          </select>
         </label>
         <div className="mt-5 flex flex-wrap justify-end gap-2">
           <button type="button" onClick={onClose} className="rounded-md border border-line px-4 py-2.5 text-[13px] font-medium hover:bg-surface">

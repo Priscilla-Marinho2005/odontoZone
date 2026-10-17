@@ -730,7 +730,7 @@ function RecordView({
         </Section>
 
         <Section title="Tratamento">
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="grid gap-4 rounded-md bg-teal/10 px-3 py-3 sm:grid-cols-2 lg:grid-cols-4">
             <Info label="Tratamento atual" value={patient.treatment} />
             <Info label="Etapa atual" value={patient.stage} />
             <Info label="Responsável" value={patient.responsible} />
@@ -822,8 +822,11 @@ function RowMenuButton({
       aria-label={`Ações de ${name}`}
       aria-haspopup="menu"
       aria-expanded={expanded}
-      onClick={(event) => onOpen(event.currentTarget)}
-      className="grid size-8 place-items-center rounded-md text-muted hover:bg-surface hover:text-ink"
+      onClick={(event) => {
+        event.stopPropagation();
+        onOpen(event.currentTarget);
+      }}
+      className="grid size-8 cursor-pointer place-items-center rounded-md text-muted hover:bg-surface hover:text-ink"
     >
       <LuEllipsis size={16} />
     </button>
@@ -1136,7 +1139,7 @@ export default function Pacientes({
             <>
               <section className="mt-3 hidden overflow-hidden rounded-lg border border-line bg-white lg:block">
                 <div className="overflow-x-auto">
-                  <table className="w-full min-w-[980px] text-left">
+                  <table className="w-full min-w-245 text-left">
                     <thead>
                       <tr className="border-b border-line bg-surface text-[11px] font-medium text-muted">
                         <th className="px-5 py-2 font-medium">Paciente</th>
@@ -1151,7 +1154,11 @@ export default function Pacientes({
                     </thead>
                     <tbody>
                       {filtered.map((patient) => (
-                        <tr key={patient.protocol} className="border-t border-line text-[13px]">
+                        <tr
+                          key={patient.protocol}
+                          onClick={() => openRecord(patient.protocol)}
+                          className="cursor-pointer border-t border-line text-[13px] hover:bg-surface/70"
+                        >
                           <td className="px-5 py-3"><PatientIdentity patient={patient} onOpen={() => openRecord(patient.protocol)} /></td>
                           <td className="px-3 py-3">{patient.treatment}</td>
                           <td className="px-3 py-3">{patient.stage}</td>
@@ -1159,7 +1166,7 @@ export default function Pacientes({
                           <td className="px-3 py-3">{patient.nextAction || "—"}</td>
                           <td className="px-3 py-3 whitespace-nowrap">{patient.responsible}</td>
                           <td className="px-3 py-3 whitespace-nowrap tabular-nums">{formatMoney(patient.value)}</td>
-                          <td className="sticky right-0 border-l border-line bg-white px-3 py-3">
+                          <td className="px-3 py-3">
                             <RowMenuButton
                               name={patient.name}
                               expanded={menu?.protocol === patient.protocol}
@@ -1173,43 +1180,35 @@ export default function Pacientes({
                 </div>
               </section>
 
-              <ul className="mt-3 space-y-3 lg:hidden">
+              <ul className="mt-3 space-y-2 lg:hidden">
                 {filtered.map((patient) => (
-                  <li key={patient.protocol} className="rounded-lg border border-line bg-white p-4">
-                    <div className="flex items-start justify-between gap-3">
-                      <PatientIdentity patient={patient} onOpen={() => openRecord(patient.protocol)} />
-                      <RowMenuButton
-                        name={patient.name}
-                        expanded={menu?.protocol === patient.protocol}
-                        onOpen={(anchor) => openMenu(patient.protocol, anchor)}
-                      />
+                  <li
+                    key={patient.protocol}
+                    onClick={() => openRecord(patient.protocol)}
+                    className="cursor-pointer rounded-lg border border-line bg-white px-3 py-3"
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="truncate text-[14px] font-semibold">{patient.name}</p>
+                        <p className="text-[11px] text-muted">{patient.protocol}</p>
+                      </div>
+                      <div className="flex shrink-0 items-center gap-1">
+                        <StatusBadge status={patient.status} />
+                        <RowMenuButton
+                          name={patient.name}
+                          expanded={menu?.protocol === patient.protocol}
+                          onOpen={(anchor) => openMenu(patient.protocol, anchor)}
+                        />
+                      </div>
                     </div>
-                    <dl className="mt-4 grid grid-cols-2 gap-x-3 gap-y-3 text-[12px]">
-                      <div>
-                        <dt className="text-muted">Tratamento</dt>
-                        <dd className="font-medium">{patient.treatment}</dd>
-                      </div>
-                      <div>
-                        <dt className="text-muted">Etapa atual</dt>
-                        <dd className="font-medium">{patient.stage}</dd>
-                      </div>
-                      <div>
-                        <dt className="text-muted">Último atendimento</dt>
-                        <dd className="font-medium">{formatDate(patient.lastVisit)}</dd>
-                      </div>
-                      <div>
-                        <dt className="text-muted">Responsável</dt>
-                        <dd className="font-medium">{patient.responsible}</dd>
-                      </div>
-                      <div className="col-span-2">
-                        <dt className="text-muted">Próxima ação</dt>
-                        <dd className="font-medium">{patient.nextAction || "—"}</dd>
-                      </div>
-                      <div>
-                        <dt className="text-muted">Valor</dt>
-                        <dd className="font-medium tabular-nums">{formatMoney(patient.value)}</dd>
-                      </div>
-                    </dl>
+                    <p className="mt-2 truncate text-[12px] text-ink">
+                      {patient.treatment}
+                      <span className="text-muted"> · {patient.stage}</span>
+                    </p>
+                    <div className="mt-1 flex items-center justify-between gap-3 text-[12px] text-muted">
+                      <span className="truncate">{patient.nextAction || "Sem próxima ação"}</span>
+                      <span className="shrink-0 tabular-nums text-ink">{formatMoney(patient.value)}</span>
+                    </div>
                   </li>
                 ))}
               </ul>
@@ -1223,7 +1222,7 @@ export default function Pacientes({
           data-patient-menu
           role="menu"
           style={{ top: menu.top, left: menu.left }}
-          className="fixed z-40 w-[196px] rounded-lg border border-line bg-white py-1 shadow-lg"
+          className="fixed z-40 w-49 rounded-lg border border-line bg-white py-1 shadow-lg"
         >
           <button type="button" role="menuitem" onClick={() => openRecord(menuPatient.protocol)} className="flex w-full items-center gap-2 px-3 py-2 text-left text-[13px] hover:bg-surface">
             <LuEye size={14} /> Ver paciente
