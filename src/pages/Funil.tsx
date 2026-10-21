@@ -2,7 +2,8 @@ import { useState } from "react";
 import { LuGripVertical } from "react-icons/lu";
 import { funnelStages, usePatients } from "./Pacientes";
 import type { FunnelStage } from "./Pacientes";
-import { actionsForTreatment, useTreatments } from "./Tratamentos";
+import { ensurePlanForTreatment } from "../data/treatmentPlan";
+import { actionsForTreatment, findClinicTreatment, placementForTreatment, useTreatments } from "./Tratamentos";
 
 type Patient = ReturnType<typeof usePatients>["patients"][number];
 
@@ -16,6 +17,7 @@ function isFunnelStage(value: string): value is FunnelStage {
 
 export default function Funil({ onOpenPatient }: { onOpenPatient: (protocol: string) => void }) {
   const { patients, setPatients } = usePatients();
+  const { treatments } = useTreatments();
   const [overStage, setOverStage] = useState<FunnelStage | null>(null);
   const [summaryProtocol, setSummaryProtocol] = useState<string | null>(null);
   const summary = patients.find((patient) => patient.protocol === summaryProtocol) ?? null;
@@ -30,6 +32,27 @@ export default function Funil({ onOpenPatient }: { onOpenPatient: (protocol: str
     setPatients((current) => current.map((patient) => (
       patient.protocol === protocol ? { ...patient, nextAction } : patient
     )));
+  }
+
+  function setTreatment(protocol: string, patientKey: string) {
+    const item = findClinicTreatment(treatments, patientKey);
+    if (!item) return;
+    const placement = placementForTreatment(item);
+    const actions = actionsForTreatment(treatments, placement.treatment);
+    const price = Number(item.price);
+    const stageNames = item.stages.split("\n").map((stage) => stage.trim()).filter(Boolean);
+    setPatients((current) => current.map((patient) => {
+      if (patient.protocol !== protocol) return patient;
+      const next = ensurePlanForTreatment(patient, placement.treatment, patient.responsible, {
+        duration: item.duration,
+        price: Number.isFinite(price) ? price : undefined,
+        stageNames,
+      });
+      return {
+        ...next,
+        nextAction: actions.includes(patient.nextAction) ? patient.nextAction : (actions[0] ?? next.nextAction),
+      };
+    }));
   }
 
   return (
@@ -48,7 +71,7 @@ export default function Funil({ onOpenPatient }: { onOpenPatient: (protocol: str
           return (
             <section
               key={stage}
-              className={`flex w-70 shrink-0 flex-col rounded-lg border bg-white ${
+              className={`flex w-72 shrink-0 flex-col rounded-lg border bg-white ${
                 overStage === stage ? "border-teal" : "border-line"
               }`}
               onDragOver={(event) => {
@@ -84,6 +107,7 @@ export default function Funil({ onOpenPatient }: { onOpenPatient: (protocol: str
                     onOpen={() => onOpenPatient(patient.protocol)}
                     onSummary={() => setSummaryProtocol(patient.protocol)}
                     onNextAction={(action) => setNextAction(patient.protocol, action)}
+                    onTreatment={(key) => setTreatment(patient.protocol, key)}
                   />
                 ))}
               </div>
@@ -99,6 +123,7 @@ export default function Funil({ onOpenPatient }: { onOpenPatient: (protocol: str
           onOpen={() => onOpenPatient(summary.protocol)}
           onMove={(stage) => movePatient(summary.protocol, stage)}
           onNextAction={(action) => setNextAction(summary.protocol, action)}
+          onTreatment={(key) => setTreatment(summary.protocol, key)}
         />
       )}
     </main>
@@ -111,15 +136,18 @@ function PatientCard({
   onOpen,
   onSummary,
   onNextAction,
+  onTreatment,
 }: {
   patient: Patient;
   onMove: (stage: FunnelStage) => void;
   onOpen: () => void;
   onSummary: () => void;
   onNextAction: (action: string) => void;
+  onTreatment: (patientKey: string) => void;
 }) {
   const { treatments } = useTreatments();
   const actions = actionsForTreatment(treatments, patient.treatment);
+  const selectClass = "mt-1 w-full rounded-md border border-line bg-white px-2 py-1.5 text-[12px] text-ink outline-none focus:border-teal";
 
   return (
     <article
@@ -133,67 +161,80 @@ function PatientCard({
         event.dataTransfer.setData("text/plain", patient.protocol);
         event.dataTransfer.effectAllowed = "move";
       }}
-      className="cursor-grab rounded-lg border border-line bg-surface p-3 active:cursor-grabbing"
+      className="cursor-grab rounded-lg border border-line bg-white p-3 shadow-[0_1px_0_rgb(219_229_232)] active:cursor-grabbing"
     >
-      <div className="flex items-start justify-between gap-2">
-        <button type="button" onClick={onSummary} className="text-left text-[14px] font-semibold hover:text-teal">
-          {patient.name}
-        </button>
-        <LuGripVertical size={16} className="mt-0.5 shrink-0 text-muted" aria-hidden="true" />
+      <header className="flex items-start gap-2">
+        {patient.photo ? (
+          <img src={patient.photo} alt="" className="size-9 shrink-0 rounded-full object-cover" />
+        ) : (
+          <span className="grid size-9 shrink-0 place-items-center rounded-full bg-teal text-[11px] font-semibold text-white">
+            {patient.name.split(" ").slice(0, 2).map((part) => part[0]).join("")}
+          </span>
+        )}
+        <div className="min-w-0 flex-1">
+          <button type="button" onClick={onSummary} className="block w-full truncate text-left text-[13px] font-semibold hover:text-teal">
+            {patient.name}
+          </button>
+          <p className="truncate text-[11px] text-muted">{patient.protocol} · {patient.responsible}</p>
+        </div>
+        <LuGripVertical size={16} className="mt-1 shrink-0 text-muted" aria-hidden="true" />
+      </header>
+
+      <div className="mt-3 grid grid-cols-2 gap-2">
+        <div className="rounded-md bg-surface px-2.5 py-2">
+          <p className="text-[10px] font-medium tracking-wide text-muted uppercase">Valor</p>
+          <p className="mt-0.5 text-[12px] font-semibold tabular-nums">{formatMoney(patient.value)}</p>
+        </div>
+        <div className="rounded-md bg-surface px-2.5 py-2">
+          <p className="text-[10px] font-medium tracking-wide text-muted uppercase">Pago</p>
+          <p className="mt-0.5 text-[12px] font-semibold tabular-nums">{formatMoney(patient.paid)}</p>
+        </div>
       </div>
-      <dl className="mt-2 space-y-1 text-[12px]">
-        <div className="flex justify-between gap-2">
-          <dt className="text-muted">Tratamento</dt>
-          <dd className="text-right font-medium">{patient.treatment}</dd>
+
+      <div className="mt-3 space-y-2 border-t border-line pt-3">
+        <label className="block text-[10px] font-medium tracking-wide text-muted uppercase">
+          Tratamento
+          <select value={patient.treatment} onChange={(event) => onTreatment(event.target.value)} className={selectClass}>
+            {treatments.map((item) => (
+              <option key={item.id} value={item.patientKey}>{item.name}</option>
+            ))}
+          </select>
+        </label>
+        <div className="grid grid-cols-1 gap-2">
+          <label className="block text-[10px] font-medium tracking-wide text-muted uppercase">
+            Próxima ação
+            <select value={patient.nextAction} onChange={(event) => onNextAction(event.target.value)} className={selectClass}>
+              <option value="">Selecione</option>
+              {patient.nextAction && !actions.includes(patient.nextAction) && (
+                <option value={patient.nextAction}>{patient.nextAction}</option>
+              )}
+              {actions.map((action) => (
+                <option key={action} value={action}>{action}</option>
+              ))}
+            </select>
+          </label>
+          <label className="block text-[10px] font-medium tracking-wide text-muted uppercase">
+            Mover etapa
+            <select
+              value={patient.funnelStage}
+              onChange={(event) => {
+                if (isFunnelStage(event.target.value)) onMove(event.target.value);
+              }}
+              className={selectClass}
+            >
+              {funnelStages.map((stage) => (
+                <option key={stage} value={stage}>{stage}</option>
+              ))}
+            </select>
+          </label>
         </div>
-        <div className="flex justify-between gap-2">
-          <dt className="text-muted">Valor</dt>
-          <dd className="font-medium tabular-nums">{formatMoney(patient.value)}</dd>
-        </div>
-        <div className="flex justify-between gap-2">
-          <dt className="text-muted">Responsável</dt>
-          <dd className="text-right font-medium">{patient.responsible}</dd>
-        </div>
-        <div className="flex justify-between gap-2">
-          <dt className="text-muted">Etapa atual</dt>
-          <dd className="text-right font-medium">{patient.funnelStage}</dd>
-        </div>
-      </dl>
-      <label className="mt-3 block text-[11px] font-medium text-muted">
-        Próxima ação
-        <select
-          value={patient.nextAction}
-          onChange={(event) => onNextAction(event.target.value)}
-          className="mt-1 w-full rounded-md border border-line bg-white px-2 py-1.5 text-[12px] text-ink outline-none focus:border-teal"
-        >
-          <option value="">Selecione a ação</option>
-          {patient.nextAction && !actions.includes(patient.nextAction) && (
-            <option value={patient.nextAction}>{patient.nextAction}</option>
-          )}
-          {actions.map((action) => (
-            <option key={action} value={action}>{action}</option>
-          ))}
-        </select>
-      </label>
-      <label className="mt-2 block text-[11px] font-medium text-muted">
-        Alterar etapa
-        <select
-          value={patient.funnelStage}
-          onChange={(event) => {
-            if (isFunnelStage(event.target.value)) onMove(event.target.value);
-          }}
-          className="mt-1 w-full rounded-md border border-line bg-white px-2 py-1.5 text-[12px] outline-none focus:border-teal"
-        >
-          {funnelStages.map((stage) => (
-            <option key={stage} value={stage}>{stage}</option>
-          ))}
-        </select>
-      </label>
+      </div>
+
       <div className="mt-3 flex gap-2">
-        <button type="button" onClick={onSummary} className="flex-1 rounded-md border border-line bg-white px-2 py-1.5 text-[12px] font-medium hover:bg-white/80">
+        <button type="button" onClick={onSummary} className="flex-1 rounded-md border border-line bg-surface px-2 py-2 text-[12px] font-medium hover:bg-white">
           Resumo
         </button>
-        <button type="button" onClick={onOpen} className="flex-1 rounded-md bg-teal px-2 py-1.5 text-[12px] font-medium text-white hover:bg-navy">
+        <button type="button" onClick={onOpen} className="flex-1 rounded-md bg-teal px-2 py-2 text-[12px] font-medium text-white hover:bg-navy">
           Abrir
         </button>
       </div>
@@ -207,12 +248,14 @@ function Summary({
   onOpen,
   onMove,
   onNextAction,
+  onTreatment,
 }: {
   patient: Patient;
   onClose: () => void;
   onOpen: () => void;
   onMove: (stage: FunnelStage) => void;
   onNextAction: (action: string) => void;
+  onTreatment: (patientKey: string) => void;
 }) {
   const { treatments } = useTreatments();
   const actions = actionsForTreatment(treatments, patient.treatment);
@@ -255,6 +298,18 @@ function Summary({
           </div>
         </dl>
         <label className="mt-4 block text-[11px] font-medium text-muted">
+          Determinar tratamento
+          <select
+            value={patient.treatment}
+            onChange={(event) => onTreatment(event.target.value)}
+            className="mt-1 w-full rounded-md border border-line px-3 py-2 text-[13px] outline-none focus:border-teal"
+          >
+            {treatments.map((item) => (
+              <option key={item.id} value={item.patientKey}>{item.name}</option>
+            ))}
+          </select>
+        </label>
+        <label className="mt-3 block text-[11px] font-medium text-muted">
           Etapa
           <select
             value={patient.funnelStage}

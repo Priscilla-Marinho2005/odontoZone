@@ -1,5 +1,7 @@
 import { useMemo, useState } from "react";
-import { LuChevronLeft, LuChevronRight } from "react-icons/lu";
+import { LuChevronLeft, LuChevronRight, LuPlus, LuX } from "react-icons/lu";
+import { clinicUsers, responsibles } from "../data/clinicPatients";
+import type { ClinicTask, ClinicUser } from "../data/clinicPatients";
 import { usePatients } from "./Pacientes";
 
 const agendaStatuses = [
@@ -9,6 +11,7 @@ const agendaStatuses = [
   "Concluído",
   "Atrasado",
   "Cancelado",
+  "Falta",
   "Retorno",
 ] as const;
 
@@ -30,6 +33,7 @@ const statusStyle: Record<AgendaStatus, string> = {
   Concluído: "bg-st-concluido/12 text-st-concluido",
   Atrasado: "bg-st-atrasado/12 text-st-atrasado",
   Cancelado: "bg-st-cancelado/12 text-st-cancelado",
+  Falta: "bg-st-cancelado/12 text-st-cancelado",
   Retorno: "bg-st-retorno/12 text-st-retorno",
 };
 
@@ -124,12 +128,95 @@ function gapsFor(patient: { funnelStage: string; status: string; nextAction: str
   return tags;
 }
 
+const fieldClass = "mt-1 w-full rounded-md border border-line px-3 py-2 text-[13px] outline-none focus:border-teal";
+
 export default function Agenda({ onOpenPatient }: { onOpenPatient: (protocol: string) => void }) {
-  const { patients, setPatients } = usePatients();
+  const { patients, setPatients, tasks, setTasks } = usePatients();
   const today = isoDate(new Date());
   const [cursor, setCursor] = useState(() => parseIso(today));
   const [view, setView] = useState<View>("mes");
   const [gap, setGap] = useState<Gap>("Não possui próximo atendimento");
+  const [modal, setModal] = useState<"appointment" | "task" | null>(null);
+  const [apptPatient, setApptPatient] = useState("");
+  const [apptDate, setApptDate] = useState(today);
+  const [apptTime, setApptTime] = useState("09:00");
+  const [apptProcedure, setApptProcedure] = useState("");
+  const [apptUser, setApptUser] = useState<(typeof responsibles)[number]>("Dra. Priscila");
+  const [apptStatus, setApptStatus] = useState<AgendaStatus>("Agendado");
+  const [taskTitle, setTaskTitle] = useState("");
+  const [taskDate, setTaskDate] = useState(today);
+  const [taskTime, setTaskTime] = useState("09:00");
+  const [taskPatient, setTaskPatient] = useState("");
+  const [taskUser, setTaskUser] = useState<ClinicUser>("Recepção");
+  const [taskNotes, setTaskNotes] = useState("");
+  const [error, setError] = useState("");
+
+  function openAppointment(date = isoDate(cursor)) {
+    setError("");
+    setApptDate(date);
+    setApptTime("09:00");
+    setApptProcedure("");
+    setApptPatient(patients[0]?.protocol ?? "");
+    setModal("appointment");
+  }
+
+  function openTask(date = isoDate(cursor)) {
+    setError("");
+    setTaskTitle("");
+    setTaskDate(date);
+    setTaskTime("09:00");
+    setTaskPatient("");
+    setTaskNotes("");
+    setModal("task");
+  }
+
+  function saveAppointment() {
+    if (!apptPatient || !apptDate || !apptTime || !apptProcedure.trim()) {
+      setError("Informe paciente, data, horário e procedimento.");
+      return;
+    }
+    setPatients((current) => current.map((patient) => {
+      if (patient.protocol !== apptPatient) return patient;
+      const visit: Visit = {
+        date: apptDate,
+        time: apptTime,
+        procedure: apptProcedure.trim(),
+        professional: apptUser,
+        status: apptStatus,
+      };
+      const next = { ...patient, upcoming: [visit, ...patient.upcoming] };
+      if (apptStatus === "Retorno") {
+        next.followUps = [{ date: apptDate, type: "Retorno", procedure: visit.procedure, status: "Agendado" }, ...next.followUps];
+      }
+      return next;
+    }));
+    setModal(null);
+    setCursor(parseIso(apptDate));
+  }
+
+  function saveTask() {
+    if (!taskTitle.trim() || !taskDate) {
+      setError("Informe o título e a data da tarefa.");
+      return;
+    }
+    const task: ClinicTask = {
+      id: `task-${crypto.randomUUID()}`,
+      title: taskTitle.trim(),
+      date: taskDate,
+      time: taskTime,
+      patientProtocol: taskPatient,
+      assignee: taskUser,
+      notes: taskNotes.trim(),
+      done: false,
+    };
+    setTasks((current) => [task, ...current]);
+    setModal(null);
+    setCursor(parseIso(taskDate));
+  }
+
+  function toggleTask(id: string) {
+    setTasks((current) => current.map((item) => (item.id === id ? { ...item, done: !item.done } : item)));
+  }
 
   const events = useMemo(() => {
     const items: EventItem[] = [];
@@ -175,7 +262,30 @@ export default function Agenda({ onOpenPatient }: { onOpenPatient: (protocol: st
           ? { ...visit, status }
           : visit
       ));
-      return { ...patient, upcoming: patch(patient.upcoming), consultations: patch(patient.consultations) };
+      const next = { ...patient, upcoming: patch(patient.upcoming), consultations: patch(patient.consultations) };
+      if (status === "Cancelado" || status === "Falta") {
+        const exists = next.absences.some((entry) => entry.date === item.date && entry.procedure === item.treatment);
+        if (!exists) {
+          next.absences = [{
+            date: item.date,
+            type: status === "Falta" ? "Falta" : "Cancelamento",
+            procedure: item.treatment,
+            reason: "Registrado pela agenda",
+          }, ...next.absences];
+        }
+      }
+      if (status === "Retorno") {
+        const exists = next.followUps.some((entry) => entry.date === item.date && entry.procedure === item.treatment);
+        if (!exists) {
+          next.followUps = [{
+            date: item.date,
+            type: "Retorno",
+            procedure: item.treatment,
+            status: "Agendado",
+          }, ...next.followUps];
+        }
+      }
+      return next;
     }));
   }
 
@@ -200,9 +310,15 @@ export default function Agenda({ onOpenPatient }: { onOpenPatient: (protocol: st
           <div>
             <p className="text-[11px] font-semibold text-teal">ÁUREA ODONTO</p>
             <h1 className="mt-0.5 text-[28px] font-semibold leading-tight">Agenda</h1>
-            <p className="text-[13px] text-muted">Compromissos da clínica, ligados ao funil e aos pacientes.</p>
+            <p className="text-[13px] text-muted">Compromissos e tarefas, vinculados a pacientes e usuários da clínica.</p>
           </div>
           <div className="flex flex-wrap gap-2">
+            <button type="button" onClick={() => openAppointment()} className="inline-flex items-center gap-1.5 rounded-md border border-line bg-white px-3 py-2 text-[13px] font-medium hover:bg-surface">
+              <LuPlus size={15} /> Novo compromisso
+            </button>
+            <button type="button" onClick={() => openTask()} className="inline-flex items-center gap-1.5 rounded-md bg-teal px-3 py-2 text-[13px] font-medium text-white hover:bg-navy">
+              <LuPlus size={15} /> Nova tarefa
+            </button>
             {views.map((item) => (
               <button
                 key={item.id}
@@ -242,11 +358,19 @@ export default function Agenda({ onOpenPatient }: { onOpenPatient: (protocol: st
         )}
 
         {view === "dia" && (
-          <DayList
-            items={events.filter((item) => item.date === dayIso)}
-            onOpen={onOpenPatient}
-            onStatus={updateStatus}
-          />
+          <>
+            <DayList
+              items={events.filter((item) => item.date === dayIso)}
+              onOpen={onOpenPatient}
+              onStatus={updateStatus}
+            />
+            <TaskList
+              tasks={tasks.filter((item) => item.date === dayIso)}
+              patients={patients}
+              onToggle={toggleTask}
+              onOpenPatient={onOpenPatient}
+            />
+          </>
         )}
 
         {view === "semana" && (
@@ -254,6 +378,7 @@ export default function Agenda({ onOpenPatient }: { onOpenPatient: (protocol: st
             {weekDays.map((day) => {
               const iso = isoDate(day);
               const items = events.filter((item) => item.date === iso);
+              const dayTasks = tasks.filter((item) => item.date === iso);
               return (
                 <section key={iso} className={`rounded-lg border bg-white p-2 ${iso === today ? "border-teal" : "border-line"}`}>
                   <button type="button" onClick={() => { setCursor(day); setView("dia"); }} className="w-full text-left">
@@ -261,7 +386,7 @@ export default function Agenda({ onOpenPatient }: { onOpenPatient: (protocol: st
                     <p className="text-[16px] font-semibold">{day.getDate()}</p>
                   </button>
                   <div className="mt-2 space-y-2">
-                    {items.length === 0 && <p className="text-[11px] text-muted">Sem horários</p>}
+                    {items.length === 0 && dayTasks.length === 0 && <p className="text-[11px] text-muted">Sem horários</p>}
                     {items.map((item) => (
                       <button
                         key={`${item.protocol}-${item.time}-${item.treatment}`}
@@ -271,6 +396,11 @@ export default function Agenda({ onOpenPatient }: { onOpenPatient: (protocol: st
                       >
                         <span className="font-semibold">{item.time}</span> {item.patient}
                       </button>
+                    ))}
+                    {dayTasks.map((item) => (
+                      <p key={item.id} className="rounded-md bg-navy/8 px-2 py-1.5 text-[11px] font-medium text-navy">
+                        {item.time} Tarefa
+                      </p>
                     ))}
                   </div>
                 </section>
@@ -290,6 +420,19 @@ export default function Agenda({ onOpenPatient }: { onOpenPatient: (protocol: st
               {monthCells.map((day) => {
                 const iso = isoDate(day);
                 const items = events.filter((item) => item.date === iso);
+                const dayTasks = tasks.filter((item) => item.date === iso);
+                const chips = [
+                  ...items.map((item) => ({
+                    key: `${item.protocol}-${item.time}`,
+                    label: `${item.time} ${item.patient.split(" ")[0]}`,
+                    className: statusStyle[item.status],
+                  })),
+                  ...dayTasks.map((item) => ({
+                    key: item.id,
+                    label: `${item.time} ${item.title}`,
+                    className: "bg-navy/10 text-navy",
+                  })),
+                ];
                 const inMonth = day.getMonth() === cursor.getMonth();
                 return (
                   <button
@@ -300,12 +443,12 @@ export default function Agenda({ onOpenPatient }: { onOpenPatient: (protocol: st
                   >
                     <span className={`text-[12px] font-semibold ${inMonth ? "" : "text-muted"}`}>{day.getDate()}</span>
                     <div className="mt-1 space-y-1">
-                      {items.slice(0, 3).map((item) => (
-                        <span key={`${item.protocol}-${item.time}`} className={`block truncate rounded px-1 py-0.5 text-[10px] font-medium ${statusStyle[item.status]}`}>
-                          {item.time} {item.patient.split(" ")[0]}
+                      {chips.slice(0, 3).map((item) => (
+                        <span key={item.key} className={`block truncate rounded px-1 py-0.5 text-[10px] font-medium ${item.className}`}>
+                          {item.label}
                         </span>
                       ))}
-                      {items.length > 3 && <span className="block text-[10px] text-muted">+{items.length - 3}</span>}
+                      {chips.length > 3 && <span className="block text-[10px] text-muted">+{chips.length - 3}</span>}
                     </div>
                   </button>
                 );
@@ -364,6 +507,105 @@ export default function Agenda({ onOpenPatient }: { onOpenPatient: (protocol: st
           </section>
         )}
       </div>
+
+      {modal && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-navy/45 sm:items-center sm:p-4">
+          <form
+            role="dialog"
+            aria-modal="true"
+            onSubmit={(event) => {
+              event.preventDefault();
+              if (modal === "appointment") saveAppointment();
+              else saveTask();
+            }}
+            className="max-h-[92vh] w-full overflow-y-auto rounded-t-xl bg-white px-5 py-5 sm:max-w-lg sm:rounded-xl"
+          >
+            <div className="flex items-start justify-between gap-3">
+              <h2 className="text-[20px] font-semibold">{modal === "appointment" ? "Novo compromisso" : "Nova tarefa"}</h2>
+              <button type="button" aria-label="Fechar" onClick={() => setModal(null)} className="grid size-8 place-items-center rounded-md text-muted hover:bg-surface">
+                <LuX size={16} />
+              </button>
+            </div>
+            {error && <p className="mt-2 text-[12px] text-danger">{error}</p>}
+
+            {modal === "appointment" ? (
+              <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                <label className="block text-[11px] font-medium text-muted sm:col-span-2">
+                  Paciente
+                  <select value={apptPatient} onChange={(event) => setApptPatient(event.target.value)} className={fieldClass}>
+                    {patients.map((patient) => (
+                      <option key={patient.protocol} value={patient.protocol}>{patient.name} · {patient.protocol}</option>
+                    ))}
+                  </select>
+                </label>
+                <label className="block text-[11px] font-medium text-muted">
+                  Data
+                  <input type="date" value={apptDate} onChange={(event) => setApptDate(event.target.value)} className={fieldClass} />
+                </label>
+                <label className="block text-[11px] font-medium text-muted">
+                  Horário
+                  <input type="time" value={apptTime} onChange={(event) => setApptTime(event.target.value)} className={fieldClass} />
+                </label>
+                <label className="block text-[11px] font-medium text-muted sm:col-span-2">
+                  Procedimento
+                  <input value={apptProcedure} onChange={(event) => setApptProcedure(event.target.value)} placeholder="Ex.: Avaliação, retorno, limpeza" className={fieldClass} />
+                </label>
+                <label className="block text-[11px] font-medium text-muted">
+                  Usuário responsável
+                  <select value={apptUser} onChange={(event) => setApptUser(event.target.value as (typeof responsibles)[number])} className={fieldClass}>
+                    {responsibles.map((user) => <option key={user} value={user}>{user}</option>)}
+                  </select>
+                </label>
+                <label className="block text-[11px] font-medium text-muted">
+                  Status
+                  <select value={apptStatus} onChange={(event) => { if (isStatus(event.target.value)) setApptStatus(event.target.value); }} className={fieldClass}>
+                    {agendaStatuses.map((status) => <option key={status} value={status}>{status}</option>)}
+                  </select>
+                </label>
+              </div>
+            ) : (
+              <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                <label className="block text-[11px] font-medium text-muted sm:col-span-2">
+                  Título
+                  <input value={taskTitle} onChange={(event) => setTaskTitle(event.target.value)} placeholder="O que precisa ser feito" className={fieldClass} />
+                </label>
+                <label className="block text-[11px] font-medium text-muted">
+                  Data
+                  <input type="date" value={taskDate} onChange={(event) => setTaskDate(event.target.value)} className={fieldClass} />
+                </label>
+                <label className="block text-[11px] font-medium text-muted">
+                  Horário
+                  <input type="time" value={taskTime} onChange={(event) => setTaskTime(event.target.value)} className={fieldClass} />
+                </label>
+                <label className="block text-[11px] font-medium text-muted">
+                  Paciente vinculado
+                  <select value={taskPatient} onChange={(event) => setTaskPatient(event.target.value)} className={fieldClass}>
+                    <option value="">Nenhum</option>
+                    {patients.map((patient) => (
+                      <option key={patient.protocol} value={patient.protocol}>{patient.name}</option>
+                    ))}
+                  </select>
+                </label>
+                <label className="block text-[11px] font-medium text-muted">
+                  Usuário responsável
+                  <select value={taskUser} onChange={(event) => setTaskUser(event.target.value as ClinicUser)} className={fieldClass}>
+                    {clinicUsers.map((user) => <option key={user} value={user}>{user}</option>)}
+                  </select>
+                </label>
+                <label className="block text-[11px] font-medium text-muted sm:col-span-2">
+                  Observações
+                  <textarea value={taskNotes} onChange={(event) => setTaskNotes(event.target.value)} rows={3} className={fieldClass} />
+                </label>
+              </div>
+            )}
+
+            <div className="mt-5 flex justify-end gap-2">
+              <button type="button" onClick={() => setModal(null)} className="rounded-md border border-line px-4 py-2.5 text-[13px] font-medium">Cancelar</button>
+              <button type="submit" className="rounded-md bg-teal px-4 py-2.5 text-[13px] font-medium text-white hover:bg-navy">Salvar</button>
+            </div>
+          </form>
+        </div>
+      )}
     </main>
   );
 }
@@ -427,6 +669,50 @@ function DayList({
           </tbody>
         </table>
       </div>
+    </section>
+  );
+}
+
+function TaskList({
+  tasks,
+  patients,
+  onToggle,
+  onOpenPatient,
+}: {
+  tasks: ClinicTask[];
+  patients: ReturnType<typeof usePatients>["patients"];
+  onToggle: (id: string) => void;
+  onOpenPatient: (protocol: string) => void;
+}) {
+  if (tasks.length === 0) return null;
+  return (
+    <section className="mt-4 rounded-lg border border-line bg-white px-5 py-4">
+      <h2 className="text-[15px] font-semibold">Tarefas do dia</h2>
+      <ul className="mt-3 space-y-2">
+        {tasks.map((task) => {
+          const linked = patients.find((patient) => patient.protocol === task.patientProtocol);
+          return (
+            <li key={task.id} className="flex flex-wrap items-start justify-between gap-3 rounded-lg border border-line px-3 py-3">
+              <label className="flex min-w-0 items-start gap-2">
+                <input type="checkbox" checked={task.done} onChange={() => onToggle(task.id)} className="mt-1" />
+                <span>
+                  <p className={`text-[13px] font-semibold ${task.done ? "text-muted line-through" : ""}`}>{task.title}</p>
+                  <p className="mt-1 text-[12px] text-muted">
+                    {task.time} · {task.assignee}
+                    {linked ? ` · ${linked.name}` : ""}
+                  </p>
+                  {task.notes && <p className="mt-1 text-[12px]">{task.notes}</p>}
+                </span>
+              </label>
+              {linked && (
+                <button type="button" onClick={() => onOpenPatient(linked.protocol)} className="text-[12px] font-medium text-teal hover:underline">
+                  Abrir paciente
+                </button>
+              )}
+            </li>
+          );
+        })}
+      </ul>
     </section>
   );
 }

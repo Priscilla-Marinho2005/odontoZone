@@ -6,6 +6,8 @@ import Funil from "./pages/Funil";
 import Agenda from "./pages/Agenda";
 import Tratamentos, { TreatmentsProvider } from "./pages/Tratamentos";
 import Orcamentos from "./pages/Orcamentos";
+import Treinamento from "./pages/Treinamento";
+import Reativacao from "./pages/Reativacao";
 
 export default function App() {
   const [page, setPage] = useState("dashboard");
@@ -26,9 +28,19 @@ export default function App() {
             setPage("pacientes");
           }} />
         ) : page === "tratamentos" ? (
-          <Tratamentos />
+          <Tratamentos onOpenPatient={(protocol) => {
+            setOpenProtocol(protocol);
+            setPage("pacientes");
+          }} />
         ) : page === "orcamentos" ? (
           <Orcamentos />
+        ) : page === "treinamento" ? (
+          <Treinamento />
+        ) : page === "reativacao" ? (
+          <Reativacao onOpenPatient={(protocol) => {
+            setOpenProtocol(protocol);
+            setPage("pacientes");
+          }} />
         ) : page === "funil" ? (
           <Funil onOpenPatient={(protocol) => {
             setOpenProtocol(protocol);

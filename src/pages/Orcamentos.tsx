@@ -51,20 +51,37 @@ export default function Orcamentos() {
 
   const quotes = useMemo(() => {
     return patients.flatMap((patient) => {
-      const [visitYear, visitMonth] = patient.lastVisit.split("-");
-      if (year && visitYear !== year) return [];
-      if (month !== "0" && String(Number(visitMonth)) !== month) return [];
-      const pending = Math.max(patient.value - patient.paid, 0);
-      return [{
-        protocol: patient.protocol,
-        name: patient.name,
-        treatment: patient.treatment,
-        stage: patient.funnelStage,
-        total: patient.value,
-        paid: patient.paid,
-        pending,
-        status: quoteStatus(patient.paid, patient.value, patient.status === "Inativo"),
-      }];
+      const rows = patient.quotes.length > 0
+        ? patient.quotes.map((quote) => ({
+            protocol: patient.protocol,
+            name: patient.name,
+            treatment: quote.title,
+            stage: patient.funnelStage,
+            total: quote.value,
+            paid: patient.paid,
+            pending: Math.max(quote.value - patient.paid, 0),
+            date: quote.date,
+            status: quote.status === "Recusado" || quote.status === "Expirado"
+              ? "Recusado" as QuoteStatus
+              : quoteStatus(patient.paid, quote.value, patient.status === "Inativo"),
+          }))
+        : [{
+            protocol: patient.protocol,
+            name: patient.name,
+            treatment: patient.treatment,
+            stage: patient.funnelStage,
+            total: patient.value,
+            paid: patient.paid,
+            pending: Math.max(patient.value - patient.paid, 0),
+            date: patient.lastVisit,
+            status: quoteStatus(patient.paid, patient.value, patient.status === "Inativo"),
+          }];
+      return rows.filter((row) => {
+        const [visitYear, visitMonth] = row.date.split("-");
+        if (year && visitYear !== year) return false;
+        if (month !== "0" && String(Number(visitMonth)) !== month) return false;
+        return true;
+      });
     });
   }, [patients, month, year]);
 

@@ -4,70 +4,56 @@ import {
   LuArrowLeft, LuCheck, LuDownload, LuEllipsis, LuEye, LuPencil, LuPlus, LuSearch, LuSlidersHorizontal, LuX,
 } from "react-icons/lu";
 import { FaWhatsapp } from "react-icons/fa";
+import {
+  defaultTagCatalog,
+  emptyAddress,
+  emptyClinicalExtras,
+  emptyGuardian,
+  funnelStages,
+  initialPatients,
+  initialTasks,
+  origins,
+  syncAgendaLinks,
+  visitsOf,
+  responsibles,
+  stagesByTreatment,
+  statuses,
+  treatments,
+} from "../data/clinicPatients";
+import type {
+  Address,
+  ClinicTask,
+  FunnelStage,
+  Guardian,
+  Interaction,
+  Origin,
+  Patient,
+  Responsible,
+  Status,
+  TagDef,
+  Treatment,
+} from "../data/clinicPatients";
+import { ensurePlanForTreatment, seedPlans } from "../data/treatmentPlan";
+import PatientPlans from "./PatientPlans";
 
-const treatments = ["Avaliação", "Limpeza", "Clareamento", "Restauração", "Canal", "Implante", "Ortodontia"] as const;
-const responsibles = ["Dra. Priscila", "Dr. Rafael"] as const;
-const statuses = ["Ativo", "Em tratamento", "Aguardando retorno", "Inativo"] as const;
-
-type Treatment = (typeof treatments)[number];
-type Responsible = (typeof responsibles)[number];
-type Status = (typeof statuses)[number];
-
-export const funnelStages = [
-  "Avaliação",
-  "Orçamento",
-  "Aguardando aprovação",
-  "Tratamento iniciado",
-  "Em tratamento",
-  "Retorno",
-  "Concluído",
-] as const;
-
-export type FunnelStage = (typeof funnelStages)[number];
-
-type ClinicalNote = {
-  date: string;
-  procedure: string;
-  professional: string;
-  notes: string;
-};
-
-type Consultation = {
-  date: string;
-  time: string;
-  procedure: string;
-  professional: string;
-  status?: "Agendado" | "Confirmado" | "Em atendimento" | "Concluído" | "Atrasado" | "Cancelado" | "Retorno";
-};
-
-type Patient = {
-  protocol: string;
-  name: string;
-  phone: string;
-  email: string;
-  birthDate: string;
-  notes: string;
-  treatment: Treatment;
-  stage: string;
-  funnelStage: FunnelStage;
-  responsible: Responsible;
-  status: Status;
-  value: number;
-  paid: number;
-  lastVisit: string;
-  nextAction: string;
-  history: ClinicalNote[];
-  upcoming: Consultation[];
-  consultations: Consultation[];
-};
+export { funnelStages };
+export type { FunnelStage };
 
 type Draft = {
   mode: "create" | "edit";
   protocol: string;
   name: string;
+  photo: string;
+  cpf: string;
   phone: string;
+  whatsapp: string;
   email: string;
   birthDate: string;
+  address: Address;
+  hasGuardian: boolean;
+  guardian: Guardian;
+  tagIds: string[];
+  origin: Origin;
   notes: string;
   treatment: Treatment;
   stage: string;
@@ -85,16 +71,6 @@ type MenuState = {
   left: number;
 };
 
-const stagesByTreatment: Record<Treatment, readonly string[]> = {
-  Avaliação: ["Triagem", "Concluída"],
-  Limpeza: ["Agendada", "Realizada"],
-  Clareamento: ["Avaliação", "Sessão 1", "Sessão 2", "Finalização"],
-  Restauração: ["Preparo", "Restauração", "Revisão"],
-  Canal: ["Diagnóstico", "Tratamento", "Obturação", "Acompanhamento"],
-  Implante: ["Planejamento", "Cirurgia", "Osseointegração", "Prótese"],
-  Ortodontia: ["Avaliação", "Instalação", "Manutenção", "Contenção"],
-};
-
 const statusStyle: Record<Status, string> = {
   Ativo: "bg-st-confirmado/12 text-st-confirmado",
   "Em tratamento": "bg-st-atendimento/12 text-st-atendimento",
@@ -107,13 +83,19 @@ const allStages = [...new Set(treatments.flatMap((treatment) => stagesByTreatmen
 type ClinicContextValue = {
   patients: Patient[];
   setPatients: Dispatch<SetStateAction<Patient[]>>;
+  tags: TagDef[];
+  setTags: Dispatch<SetStateAction<TagDef[]>>;
+  tasks: ClinicTask[];
+  setTasks: Dispatch<SetStateAction<ClinicTask[]>>;
 };
 
 const ClinicContext = createContext<ClinicContextValue | null>(null);
 
 export function PatientsProvider({ children }: { children: ReactNode }) {
-  const [patients, setPatients] = useState<Patient[]>(initialPatients);
-  return <ClinicContext.Provider value={{ patients, setPatients }}>{children}</ClinicContext.Provider>;
+  const [patients, setPatients] = useState<Patient[]>(() => seedPlans(initialPatients).map(syncAgendaLinks));
+  const [tags, setTags] = useState<TagDef[]>(defaultTagCatalog);
+  const [tasks, setTasks] = useState<ClinicTask[]>(initialTasks);
+  return <ClinicContext.Provider value={{ patients, setPatients, tags, setTags, tasks, setTasks }}>{children}</ClinicContext.Provider>;
 }
 
 export function usePatients() {
@@ -122,200 +104,9 @@ export function usePatients() {
   return value;
 }
 
-const initialPatients: Patient[] = [
-  {
-    protocol: "OZ-0001",
-    name: "Ana Beatriz Santos",
-    phone: "(11) 98821-1044",
-    email: "ana.santos@email.com",
-    birthDate: "1994-03-12",
-    notes: "Prefere contato por WhatsApp no período da tarde.",
-    treatment: "Avaliação",
-    stage: "Triagem",
-    funnelStage: "Avaliação",
-    responsible: "Dra. Priscila",
-    status: "Ativo",
-    value: 350,
-    paid: 0,
-    lastVisit: "2026-10-05",
-    nextAction: "Enviar orçamento",
-    history: [
-      { date: "2026-10-05", procedure: "Avaliação inicial", professional: "Dra. Priscila", notes: "Queixa de sensibilidade. Exames solicitados." },
-    ],
-    upcoming: [
-      { date: "2026-10-16", time: "14:00", procedure: "Avaliação", professional: "Dra. Priscila", status: "Agendado" },
-      { date: "2026-10-16", time: "15:30", procedure: "Retorno da avaliação", professional: "Dra. Priscila", status: "Retorno" },
-      { date: "2026-10-20", time: "15:00", procedure: "Retorno da avaliação", professional: "Dra. Priscila", status: "Confirmado" },
-    ],
-    consultations: [
-      { date: "2026-10-05", time: "16:00", procedure: "Avaliação", professional: "Dra. Priscila" },
-    ],
-  },
-  {
-    protocol: "OZ-0002",
-    name: "Carlos Henrique",
-    phone: "(11) 99740-2218",
-    email: "carlos.henrique@email.com",
-    birthDate: "1981-07-02",
-    notes: "Relatou desconforto ao mastigar do lado direito.",
-    treatment: "Restauração",
-    stage: "Revisão",
-    funnelStage: "Orçamento",
-    responsible: "Dra. Priscila",
-    status: "Aguardando retorno",
-    value: 890,
-    paid: 890,
-    lastVisit: "2026-09-28",
-    nextAction: "Agendar revisão",
-    history: [
-      { date: "2026-09-14", procedure: "Restauração", professional: "Dra. Priscila", notes: "Restauração em resina no dente 16." },
-      { date: "2026-09-28", procedure: "Revisão", professional: "Dra. Priscila", notes: "Adaptação boa. Orientado retorno em 30 dias." },
-    ],
-    upcoming: [],
-    consultations: [
-      { date: "2026-09-14", time: "09:00", procedure: "Restauração", professional: "Dra. Priscila" },
-      { date: "2026-09-28", time: "09:30", procedure: "Revisão", professional: "Dra. Priscila" },
-    ],
-  },
-  {
-    protocol: "OZ-0003",
-    name: "Fernanda Lima",
-    phone: "(11) 98102-7730",
-    email: "fernanda.lima@email.com",
-    birthDate: "1990-11-21",
-    notes: "",
-    treatment: "Limpeza",
-    stage: "Realizada",
-    funnelStage: "Concluído",
-    responsible: "Dra. Priscila",
-    status: "Ativo",
-    value: 180,
-    paid: 180,
-    lastVisit: "2026-10-05",
-    nextAction: "Profilaxia em 6 meses",
-    history: [
-      { date: "2026-10-05", procedure: "Limpeza", professional: "Dra. Priscila", notes: "Profilaxia concluída sem intercorrências." },
-    ],
-    upcoming: [
-      { date: "2026-10-16", time: "08:00", procedure: "Limpeza", professional: "Dra. Priscila", status: "Concluído" },
-      { date: "2026-10-16", time: "16:00", procedure: "Retoque de limpeza", professional: "Dra. Priscila", status: "Cancelado" },
-      { date: "2027-04-05", time: "08:30", procedure: "Profilaxia", professional: "Dra. Priscila", status: "Agendado" },
-    ],
-    consultations: [
-      { date: "2026-10-05", time: "08:00", procedure: "Limpeza", professional: "Dra. Priscila" },
-    ],
-  },
-  {
-    protocol: "OZ-0004",
-    name: "João Pedro Silva",
-    phone: "(11) 99215-4481",
-    email: "joao.silva@email.com",
-    birthDate: "1988-01-30",
-    notes: "Implante na região do 36. Acompanhar cicatrização.",
-    treatment: "Implante",
-    stage: "Osseointegração",
-    funnelStage: "Em tratamento",
-    responsible: "Dr. Rafael",
-    status: "Em tratamento",
-    value: 8500,
-    paid: 4000,
-    lastVisit: "2026-10-02",
-    nextAction: "Definir próximo atendimento",
-    history: [
-      { date: "2026-08-18", procedure: "Cirurgia de implante", professional: "Dr. Rafael", notes: "Implante instalado. Receituário e cuidados pós-operatórios entregues." },
-      { date: "2026-10-02", procedure: "Controle", professional: "Dr. Rafael", notes: "Cicatrização dentro do esperado." },
-    ],
-    upcoming: [],
-    consultations: [
-      { date: "2026-08-10", time: "14:00", procedure: "Planejamento", professional: "Dr. Rafael" },
-      { date: "2026-10-02", time: "14:30", procedure: "Controle", professional: "Dr. Rafael" },
-    ],
-  },
-  {
-    protocol: "OZ-0005",
-    name: "Luciana Prado",
-    phone: "(11) 99633-0192",
-    email: "luciana.prado@email.com",
-    birthDate: "1996-05-18",
-    notes: "Usa aparelho fixo. Manutenção mensal.",
-    treatment: "Ortodontia",
-    stage: "Manutenção",
-    funnelStage: "Tratamento iniciado",
-    responsible: "Dr. Rafael",
-    status: "Em tratamento",
-    value: 6200,
-    paid: 3100,
-    lastVisit: "2026-09-20",
-    nextAction: "Troca de arco",
-    history: [
-      { date: "2026-09-20", procedure: "Manutenção ortodôntica", professional: "Dr. Rafael", notes: "Troca de ligaduras. Próxima etapa: arco superior." },
-    ],
-    upcoming: [
-      { date: "2026-10-16", time: "09:00", procedure: "Manutenção", professional: "Dr. Rafael", status: "Atrasado" },
-      { date: "2026-10-16", time: "11:00", procedure: "Manutenção", professional: "Dr. Rafael", status: "Confirmado" },
-      { date: "2026-10-22", time: "11:00", procedure: "Manutenção", professional: "Dr. Rafael", status: "Agendado" },
-    ],
-    consultations: [
-      { date: "2026-06-12", time: "11:00", procedure: "Instalação", professional: "Dr. Rafael" },
-      { date: "2026-09-20", time: "11:00", procedure: "Manutenção", professional: "Dr. Rafael" },
-    ],
-  },
-  {
-    protocol: "OZ-0006",
-    name: "Maria Oliveira",
-    phone: "(11) 98477-3306",
-    email: "maria.oliveira@email.com",
-    birthDate: "1979-09-09",
-    notes: "Sensibilidade leve após a segunda sessão.",
-    treatment: "Clareamento",
-    stage: "Sessão 2",
-    funnelStage: "Aguardando aprovação",
-    responsible: "Dra. Priscila",
-    status: "Em tratamento",
-    value: 1400,
-    paid: 700,
-    lastVisit: "2026-10-05",
-    nextAction: "Confirmar sessão 3",
-    history: [
-      { date: "2026-09-20", procedure: "Sessão 1 de clareamento", professional: "Dra. Priscila", notes: "Início do protocolo. Sem queixas." },
-      { date: "2026-10-05", procedure: "Sessão 2 de clareamento", professional: "Dra. Priscila", notes: "Sensibilidade leve. Orientado uso de dessensibilizante." },
-    ],
-    upcoming: [
-      { date: "2026-10-16", time: "10:00", procedure: "Clareamento", professional: "Dra. Priscila", status: "Em atendimento" },
-      { date: "2026-10-19", time: "10:00", procedure: "Sessão 3 de clareamento", professional: "Dra. Priscila", status: "Confirmado" },
-    ],
-    consultations: [
-      { date: "2026-09-20", time: "09:30", procedure: "Clareamento", professional: "Dra. Priscila" },
-      { date: "2026-10-05", time: "10:00", procedure: "Clareamento", professional: "Dra. Priscila" },
-    ],
-  },
-  {
-    protocol: "OZ-0007",
-    name: "Roberto Alves",
-    phone: "(11) 99108-5520",
-    email: "roberto.alves@email.com",
-    birthDate: "1972-12-03",
-    notes: "Tratamento de canal concluído. Paciente sem retorno recente.",
-    treatment: "Canal",
-    stage: "Acompanhamento",
-    funnelStage: "Retorno",
-    responsible: "Dr. Rafael",
-    status: "Inativo",
-    value: 1600,
-    paid: 1600,
-    lastVisit: "2026-08-12",
-    nextAction: "Sem retorno previsto",
-    history: [
-      { date: "2026-07-08", procedure: "Abertura e instrumentação", professional: "Dr. Rafael", notes: "Canal do dente 26 iniciado." },
-      { date: "2026-08-12", procedure: "Obturação", professional: "Dr. Rafael", notes: "Tratamento finalizado. Alta com orientação." },
-    ],
-    upcoming: [],
-    consultations: [
-      { date: "2026-07-08", time: "09:00", procedure: "Canal", professional: "Dr. Rafael" },
-      { date: "2026-08-12", time: "09:00", procedure: "Obturação", professional: "Dr. Rafael" },
-    ],
-  },
-];
+function isOrigin(value: string): value is Origin {
+  return (origins as readonly string[]).includes(value);
+}
 
 function isTreatment(value: string): value is Treatment {
   return (treatments as readonly string[]).includes(value);
@@ -361,6 +152,38 @@ function nextProtocol(list: Patient[]) {
 }
 
 const patientFunnelFilters = ["Todos", "Novos", "Em tratamento", "Retorno", "Financeiro"] as const;
+const managementSegments = [
+  "Todos",
+  "Inativos",
+  "Tratamentos pendentes",
+  "Pagamentos em aberto",
+  "Interrompidos",
+] as const;
+type ManagementSegment = (typeof managementSegments)[number];
+
+function pendingTreatments(patient: Patient) {
+  const plans = patient.plans ?? [];
+  if (plans.length > 0) {
+    return plans.filter((item) => item.status === "Planejado" || item.status === "Em andamento");
+  }
+  return patient.treatments.filter((item) => item.status === "Pendente" || item.status === "Em andamento");
+}
+
+function interruptedPlans(patient: Patient) {
+  return (patient.plans ?? []).filter((item) => item.status === "Interrompido");
+}
+
+function hasOpenPayment(patient: Patient) {
+  return pendingValue(patient) > 0 || patient.payments.some((item) => item.status === "Em aberto" || item.status === "Atrasado");
+}
+
+function matchesManagementSegment(patient: Patient, segment: ManagementSegment) {
+  if (segment === "Todos") return true;
+  if (segment === "Inativos") return patient.status === "Inativo";
+  if (segment === "Tratamentos pendentes") return pendingTreatments(patient).length > 0;
+  if (segment === "Interrompidos") return interruptedPlans(patient).length > 0;
+  return hasOpenPayment(patient);
+}
 
 function matchesFunnelFilter(patient: Patient, filter: (typeof patientFunnelFilters)[number]) {
   if (filter === "Todos") return true;
@@ -380,6 +203,28 @@ function pendingValue(patient: Pick<Patient, "value" | "paid">) {
   return Math.max(patient.value - patient.paid, 0);
 }
 
+function ageFromBirth(iso: string) {
+  if (!iso) return null;
+  const birth = new Date(`${iso}T12:00:00`);
+  if (Number.isNaN(birth.getTime())) return null;
+  const today = new Date();
+  let age = today.getFullYear() - birth.getFullYear();
+  const month = today.getMonth() - birth.getMonth();
+  if (month < 0 || (month === 0 && today.getDate() < birth.getDate())) age -= 1;
+  return age;
+}
+
+function guardianSuggested(age: number | null) {
+  return age !== null && (age < 18 || age > 65);
+}
+
+function formatAddress(address: Address) {
+  const line = [address.street, address.number].filter(Boolean).join(", ");
+  const city = [address.neighborhood, address.city, address.state].filter(Boolean).join(" · ");
+  const zip = address.zip ? `CEP ${address.zip}` : "";
+  return [line, city, zip].filter(Boolean).join(" — ") || "";
+}
+
 function buildRecordText(patient: Patient) {
   const lines = [
     "PRONTUÁRIO — ODONTOZONE",
@@ -387,10 +232,14 @@ function buildRecordText(patient: Patient) {
     "PACIENTE",
     `Nome: ${patient.name}`,
     `Número do protocolo: ${patient.protocol}`,
+    `CPF: ${patient.cpf || "—"}`,
     `Telefone: ${patient.phone || "—"}`,
+    `WhatsApp: ${patient.whatsapp || "—"}`,
     `E-mail: ${patient.email || "—"}`,
     `Data de nascimento: ${formatDate(patient.birthDate)}`,
-    `Observações: ${patient.notes || "—"}`,
+    `Endereço: ${formatAddress(patient.address) || "—"}`,
+    `Origem: ${patient.origin}`,
+    `Observações internas: ${patient.notes || "—"}`,
     "",
     "TRATAMENTO",
     `Tratamento atual: ${patient.treatment}`,
@@ -443,9 +292,17 @@ function emptyDraft(protocol: string): Draft {
     mode: "create",
     protocol,
     name: "",
+    photo: "https://randomuser.me/api/portraits/lego/1.jpg",
+    cpf: "",
     phone: "",
+    whatsapp: "",
     email: "",
     birthDate: "",
+    address: emptyAddress(),
+    hasGuardian: false,
+    guardian: emptyGuardian(),
+    tagIds: [],
+    origin: "Passante",
     notes: "",
     treatment,
     stage: stagesByTreatment[treatment][0],
@@ -463,9 +320,17 @@ function draftFromPatient(patient: Patient): Draft {
     mode: "edit",
     protocol: patient.protocol,
     name: patient.name,
+    photo: patient.photo,
+    cpf: patient.cpf,
     phone: patient.phone,
+    whatsapp: patient.whatsapp,
     email: patient.email,
     birthDate: patient.birthDate,
+    address: patient.address,
+    hasGuardian: patient.hasGuardian,
+    guardian: patient.guardian ?? emptyGuardian(),
+    tagIds: patient.tagIds,
+    origin: patient.origin,
     notes: patient.notes,
     treatment: patient.treatment,
     stage: patient.stage,
@@ -564,24 +429,67 @@ function SelectField({
   );
 }
 
+function TagChip({ tag, onRemove }: { tag: TagDef; onRemove?: () => void }) {
+  return (
+    <span
+      className="inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-semibold text-white"
+      style={{ backgroundColor: tag.color }}
+    >
+      {tag.label}
+      {onRemove && (
+        <button type="button" onClick={onRemove} aria-label={`Remover ${tag.label}`} className="opacity-80 hover:opacity-100">
+          <LuX size={12} />
+        </button>
+      )}
+    </span>
+  );
+}
+
 function PatientForm({
   draft,
   errors,
+  tags,
+  onAddTag,
   onChange,
   onClose,
   onSubmit,
 }: {
   draft: Draft;
   errors: Record<string, string>;
+  tags: TagDef[];
+  onAddTag: (tag: TagDef) => void;
   onChange: (next: Draft) => void;
   onClose: () => void;
   onSubmit: () => void;
 }) {
+  const [newTagLabel, setNewTagLabel] = useState("");
+  const [newTagColor, setNewTagColor] = useState("#018295");
+  const age = ageFromBirth(draft.birthDate);
+  const suggestGuardian = guardianSuggested(age);
+
   useEffect(() => {
     document.getElementById("paciente-nome")?.focus();
   }, []);
 
   const set = (patch: Partial<Draft>) => onChange({ ...draft, ...patch });
+
+  function toggleTag(id: string) {
+    set({
+      tagIds: draft.tagIds.includes(id)
+        ? draft.tagIds.filter((tagId) => tagId !== id)
+        : [...draft.tagIds, id],
+    });
+  }
+
+  function createTag() {
+    const label = newTagLabel.trim();
+    if (!label) return;
+    const id = `tag-${Date.now()}`;
+    const tag: TagDef = { id, label, color: newTagColor };
+    onAddTag(tag);
+    set({ tagIds: [...draft.tagIds, id] });
+    setNewTagLabel("");
+  }
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-navy/45 p-0 sm:items-center sm:p-4">
@@ -593,7 +501,7 @@ function PatientForm({
           event.preventDefault();
           onSubmit();
         }}
-        className="max-h-[92vh] w-full overflow-y-auto rounded-t-xl bg-white px-5 py-5 shadow-xl sm:max-w-2xl sm:rounded-xl"
+        className="max-h-[92vh] w-full overflow-y-auto rounded-t-xl bg-white px-5 py-5 shadow-xl sm:max-w-3xl sm:rounded-xl"
       >
         <div className="flex items-start justify-between gap-3">
           <div>
@@ -601,7 +509,7 @@ function PatientForm({
               {draft.mode === "create" ? "Novo paciente" : "Editar paciente"}
             </h2>
             <p className="mt-1 text-[12px] text-muted">
-              Protocolo {draft.protocol}. Número único e exclusivo deste paciente.
+              Protocolo {draft.protocol}. Cadastro pessoal, contato e observações internas.
             </p>
           </div>
           <button
@@ -615,15 +523,109 @@ function PatientForm({
         </div>
 
         <div className="mt-5 grid gap-4 sm:grid-cols-2">
+          <div className="flex items-center gap-3 sm:col-span-2">
+            <img src={draft.photo} alt="" className="size-16 rounded-full object-cover ring-1 ring-line" />
+            <label className="text-[13px] font-medium text-teal">
+              Alterar foto
+              <input
+                type="file"
+                accept="image/*"
+                className="sr-only"
+                onChange={(event) => {
+                  const file = event.target.files?.[0];
+                  if (!file) return;
+                  const reader = new FileReader();
+                  reader.onload = () => set({ photo: String(reader.result) });
+                  reader.readAsDataURL(file);
+                }}
+              />
+            </label>
+          </div>
           <div className="sm:col-span-2">
             <TextField id="paciente-nome" label="Nome" value={draft.name} onChange={(name) => set({ name })} error={errors.name} required />
           </div>
-          <TextField id="paciente-telefone" label="Telefone" value={draft.phone} onChange={(phone) => set({ phone })} />
-          <TextField id="paciente-email" label="E-mail" type="email" value={draft.email} onChange={(email) => set({ email })} error={errors.email} />
+          <TextField id="paciente-cpf" label="CPF" value={draft.cpf} onChange={(cpf) => set({ cpf })} />
           <TextField id="paciente-nascimento" label="Data de nascimento" type="date" value={draft.birthDate} onChange={(birthDate) => set({ birthDate })} />
+          <TextField id="paciente-telefone" label="Telefone" value={draft.phone} onChange={(phone) => set({ phone, whatsapp: draft.whatsapp || phone })} />
+          <TextField id="paciente-whatsapp" label="WhatsApp" value={draft.whatsapp} onChange={(whatsapp) => set({ whatsapp })} />
+          <TextField id="paciente-email" label="E-mail" type="email" value={draft.email} onChange={(email) => set({ email })} error={errors.email} />
+          <SelectField
+            id="paciente-origem"
+            label="Origem do paciente"
+            value={draft.origin}
+            options={origins}
+            onChange={(value) => {
+              if (isOrigin(value)) set({ origin: value });
+            }}
+          />
           <TextField id="paciente-protocolo" label="Número do protocolo" value={draft.protocol} onChange={() => undefined} readOnly />
+          <TextField id="paciente-rua" label="Endereço" value={draft.address.street} onChange={(street) => set({ address: { ...draft.address, street } })} />
+          <TextField id="paciente-numero" label="Número" value={draft.address.number} onChange={(number) => set({ address: { ...draft.address, number } })} />
+          <TextField id="paciente-bairro" label="Bairro" value={draft.address.neighborhood} onChange={(neighborhood) => set({ address: { ...draft.address, neighborhood } })} />
+          <TextField id="paciente-cidade" label="Cidade" value={draft.address.city} onChange={(city) => set({ address: { ...draft.address, city } })} />
+          <TextField id="paciente-uf" label="UF" value={draft.address.state} onChange={(state) => set({ address: { ...draft.address, state } })} />
+          <TextField id="paciente-cep" label="CEP" value={draft.address.zip} onChange={(zip) => set({ address: { ...draft.address, zip } })} />
+
+          <div className="sm:col-span-2 rounded-lg border border-line px-4 py-3">
+            <label className="flex items-start gap-2 text-[13px]">
+              <input
+                type="checkbox"
+                checked={draft.hasGuardian}
+                onChange={(event) => set({ hasGuardian: event.target.checked })}
+                className="mt-0.5"
+              />
+              <span>
+                Cadastrar responsável legal
+                {suggestGuardian && (
+                  <span className="mt-0.5 block text-[11px] text-muted">
+                    Recomendado: paciente {age !== null && age < 18 ? "menor de 18 anos" : "maior de 65 anos"}.
+                  </span>
+                )}
+              </span>
+            </label>
+            {draft.hasGuardian && (
+              <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                <TextField id="resp-nome" label="Nome do responsável" value={draft.guardian.name} onChange={(name) => set({ guardian: { ...draft.guardian, name } })} />
+                <TextField id="resp-parentesco" label="Parentesco" value={draft.guardian.kinship} onChange={(kinship) => set({ guardian: { ...draft.guardian, kinship } })} />
+                <TextField id="resp-telefone" label="Telefone" value={draft.guardian.phone} onChange={(phone) => set({ guardian: { ...draft.guardian, phone } })} />
+                <TextField id="resp-cpf" label="CPF" value={draft.guardian.cpf} onChange={(cpf) => set({ guardian: { ...draft.guardian, cpf } })} />
+              </div>
+            )}
+          </div>
+
+          <div className="sm:col-span-2">
+            <p className="text-[11px] font-medium text-muted">Tags e categorias</p>
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {tags.map((tag) => (
+                <button
+                  key={tag.id}
+                  type="button"
+                  onClick={() => toggleTag(tag.id)}
+                  className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${
+                    draft.tagIds.includes(tag.id) ? "text-white" : "bg-surface text-muted ring-1 ring-line"
+                  }`}
+                  style={draft.tagIds.includes(tag.id) ? { backgroundColor: tag.color } : undefined}
+                >
+                  {tag.label}
+                </button>
+              ))}
+            </div>
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              <input
+                value={newTagLabel}
+                onChange={(event) => setNewTagLabel(event.target.value)}
+                placeholder="Nova tag"
+                className="min-w-40 flex-1 rounded-md border border-line px-3 py-2 text-[13px] outline-none focus:border-teal"
+              />
+              <input type="color" value={newTagColor} onChange={(event) => setNewTagColor(event.target.value)} aria-label="Cor da tag" className="h-9 w-12 cursor-pointer rounded border border-line" />
+              <button type="button" onClick={createTag} className="rounded-md border border-line px-3 py-2 text-[13px] font-medium hover:bg-surface">
+                Adicionar tag
+              </button>
+            </div>
+          </div>
+
           <label htmlFor="paciente-observacoes" className="block sm:col-span-2">
-            <span className="text-[11px] font-medium text-muted">Observações</span>
+            <span className="text-[11px] font-medium text-muted">Observações internas</span>
             <textarea
               id="paciente-observacoes"
               value={draft.notes}
@@ -634,7 +636,7 @@ function PatientForm({
           </label>
           <SelectField
             id="paciente-tratamento"
-            label="Tipo de tratamento"
+            label="Determinar tratamento"
             value={draft.treatment}
             options={treatments}
             onChange={(value) => {
@@ -652,7 +654,7 @@ function PatientForm({
           />
           <SelectField
             id="paciente-responsavel"
-            label="Responsável"
+            label="Profissional responsável"
             value={draft.responsible}
             options={responsibles}
             onChange={(value) => {
@@ -687,7 +689,10 @@ function PatientForm({
   );
 }
 
-const recordTabs = ["Resumo", "Histórico", "Tratamentos", "Orçamentos", "Financeiro", "Tarefas", "Mensagens", "Anotações"] as const;
+const recordTabs = [
+  "Resumo", "Histórico", "Consultas", "Procedimentos", "Tratamentos",
+  "Orçamentos", "Pagamentos", "Mensagens", "Faltas", "Retornos", "Tarefas", "Anotações",
+] as const;
 type RecordTab = (typeof recordTabs)[number];
 
 function initials(name: string) {
@@ -719,6 +724,35 @@ function timelineLabel(iso: string) {
   return sameDay ? "Hoje" : formatDate(iso);
 }
 
+function agendaAbsences(patient: Patient) {
+  return visitsOf(patient)
+    .filter((visit) => visit.status === "Cancelado" || visit.status === "Falta")
+    .map((visit) => ({
+      date: visit.date,
+      time: visit.time,
+      type: visit.status === "Falta" ? "Falta" : "Cancelamento",
+      procedure: visit.procedure,
+      reason: visit.notes || "Compromisso da agenda",
+      professional: visit.professional,
+    }));
+}
+
+function agendaFollowUps(patient: Patient) {
+  return visitsOf(patient)
+    .filter((visit) => (
+      visit.status === "Retorno"
+      || /retorno|manuten/i.test(visit.procedure)
+    ))
+    .map((visit) => ({
+      date: visit.date,
+      time: visit.time,
+      type: /manuten/i.test(visit.procedure) ? "Manutenção" : "Retorno",
+      procedure: visit.procedure,
+      status: visit.status === "Concluído" ? "Realizado" : visit.status === "Atrasado" ? "Atrasado" : "Agendado",
+      professional: visit.professional,
+    }));
+}
+
 function whatsappHref(phone: string) {
   const digits = phone.replace(/\D/g, "");
   if (!digits) return null;
@@ -728,12 +762,16 @@ function whatsappHref(phone: string) {
 
 function RecordView({
   patient,
+  tags,
   onBack,
   onEdit,
+  onChange,
 }: {
   patient: Patient;
+  tags: TagDef[];
   onBack: () => void;
   onEdit: () => void;
+  onChange: (next: Patient) => void;
 }) {
   const pending = pendingValue(patient);
   const paidRatio = patient.value > 0 ? Math.min(patient.paid / patient.value, 1) : 0;
@@ -744,7 +782,21 @@ function RecordView({
   const [taskDraft, setTaskDraft] = useState("");
   const [extraNotes, setExtraNotes] = useState<string[]>([]);
   const [noteDraft, setNoteDraft] = useState("");
-  const chat = whatsappHref(patient.phone);
+  const [messageDate, setMessageDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [messageChannel, setMessageChannel] = useState<Interaction["channel"]>("WhatsApp");
+  const [messageSummary, setMessageSummary] = useState("");
+  const [absenceDate, setAbsenceDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [absenceTime, setAbsenceTime] = useState("09:00");
+  const [absenceType, setAbsenceType] = useState<"Falta" | "Cancelamento">("Cancelamento");
+  const [absenceProcedure, setAbsenceProcedure] = useState("");
+  const [absenceReason, setAbsenceReason] = useState("");
+  const [returnDate, setReturnDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [returnTime, setReturnTime] = useState("10:00");
+  const [returnType, setReturnType] = useState<"Retorno" | "Manutenção">("Retorno");
+  const [returnProcedure, setReturnProcedure] = useState("");
+  const chat = whatsappHref(patient.whatsapp || patient.phone);
+  const patientTags = tags.filter((tag) => patient.tagIds.includes(tag.id));
+  const age = ageFromBirth(patient.birthDate);
 
   const timeline = [
     ...(nextVisit
@@ -784,9 +836,13 @@ function RecordView({
 
       <header className="mt-4 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
         <div className="flex items-center gap-3">
-          <span className="grid size-12 shrink-0 place-items-center rounded-full bg-teal text-[15px] font-semibold text-white">
-            {initials(patient.name)}
-          </span>
+          {patient.photo ? (
+            <img src={patient.photo} alt="" className="size-12 shrink-0 rounded-full object-cover" />
+          ) : (
+            <span className="grid size-12 shrink-0 place-items-center rounded-full bg-teal text-[15px] font-semibold text-white">
+              {initials(patient.name)}
+            </span>
+          )}
           <div>
             <div className="flex flex-wrap items-center gap-2">
               <h1 className="text-[26px] font-semibold leading-tight">{patient.name}</h1>
@@ -794,7 +850,13 @@ function RecordView({
             </div>
             <p className="mt-0.5 text-[13px] text-muted">
               {patient.phone || "Sem telefone"} · {patient.treatment} · {patient.stage}
+              {age !== null ? ` · ${age} anos` : ""}
             </p>
+            {patientTags.length > 0 && (
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                {patientTags.map((tag) => <TagChip key={tag.id} tag={tag} />)}
+              </div>
+            )}
           </div>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -917,7 +979,15 @@ function RecordView({
 
       {tab === "Histórico" && (
         <section className="mt-5 rounded-xl border border-line bg-white px-5 py-4">
-          <h2 className="text-[15px] font-semibold">Atendimentos</h2>
+          <h2 className="text-[15px] font-semibold">Histórico completo</h2>
+          <div className="mt-4 grid gap-4 sm:grid-cols-3">
+            <Info label="CPF" value={patient.cpf} />
+            <Info label="Origem" value={patient.origin} />
+            <Info label="Endereço" value={formatAddress(patient.address)} />
+            {patient.hasGuardian && patient.guardian && (
+              <Info label="Responsável legal" value={`${patient.guardian.name} (${patient.guardian.kinship})`} />
+            )}
+          </div>
           {patient.history.length === 0 ? (
             <p className="mt-3 text-[13px] text-muted">Nenhum atendimento registrado.</p>
           ) : (
@@ -934,29 +1004,72 @@ function RecordView({
         </section>
       )}
 
-      {tab === "Tratamentos" && (
+      {tab === "Consultas" && (
         <section className="mt-5 rounded-xl border border-line bg-white px-5 py-4">
-          <h2 className="text-[15px] font-semibold">{patient.treatment}</h2>
-          <div className="mt-4 grid gap-4 sm:grid-cols-3">
-            <Info label="Etapa" value={patient.stage} />
-            <Info label="Funil" value={patient.funnelStage} />
-            <Info label="Responsável" value={patient.responsible} />
-          </div>
+          <h2 className="text-[15px] font-semibold">Consultas anteriores</h2>
+          {patient.consultations.length === 0 ? (
+            <p className="mt-3 text-[13px] text-muted">Nenhuma consulta registrada.</p>
+          ) : (
+            <ul className="mt-4 space-y-3">
+              {patient.consultations.map((item) => (
+                <li key={`${item.date}-${item.time}-${item.procedure}`} className="rounded-lg border border-line px-4 py-3">
+                  <p className="text-[13px] font-semibold">{item.procedure}</p>
+                  <p className="mt-1 text-[12px] text-muted">
+                    {formatDate(item.date)} · {item.time} · {item.professional}
+                    {item.status ? ` · ${item.status}` : ""}
+                  </p>
+                </li>
+              ))}
+            </ul>
+          )}
         </section>
+      )}
+
+      {tab === "Procedimentos" && (
+        <section className="mt-5 rounded-xl border border-line bg-white px-5 py-4">
+          <h2 className="text-[15px] font-semibold">Procedimentos realizados</h2>
+          {patient.procedures.length === 0 ? (
+            <p className="mt-3 text-[13px] text-muted">Nenhum procedimento registrado.</p>
+          ) : (
+            <ul className="mt-4 space-y-3">
+              {patient.procedures.map((item) => (
+                <li key={`${item.date}-${item.name}`} className="rounded-lg border border-line px-4 py-3">
+                  <p className="text-[13px] font-semibold">{item.name}</p>
+                  <p className="mt-1 text-[12px] text-muted">{formatDate(item.date)} · Dente {item.tooth} · {item.professional}</p>
+                  {item.notes && <p className="mt-2 text-[13px]">{item.notes}</p>}
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+      )}
+
+      {tab === "Tratamentos" && (
+        <PatientPlans patient={patient} onChange={onChange} />
       )}
 
       {tab === "Orçamentos" && (
         <section className="mt-5 rounded-xl border border-line bg-white px-5 py-4">
-          <h2 className="text-[15px] font-semibold">Orçamento do tratamento</h2>
-          <div className="mt-4 grid gap-4 sm:grid-cols-3">
-            <Info label="Tratamento" value={patient.treatment} />
-            <Info label="Valor" value={formatMoney(patient.value)} />
-            <Info label="Situação" value={pending === 0 ? "Quitado" : "Em aberto"} />
-          </div>
+          <h2 className="text-[15px] font-semibold">Orçamentos</h2>
+          {patient.quotes.length === 0 ? (
+            <p className="mt-3 text-[13px] text-muted">Nenhum orçamento registrado.</p>
+          ) : (
+            <ul className="mt-4 space-y-3">
+              {patient.quotes.map((item) => (
+                <li key={item.id} className="rounded-lg border border-line px-4 py-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <p className="text-[13px] font-semibold">{item.title}</p>
+                    <span className="text-[11px] font-semibold">{item.status}</span>
+                  </div>
+                  <p className="mt-1 text-[12px] text-muted">{item.id} · {formatDate(item.date)} · {formatMoney(item.value)}</p>
+                </li>
+              ))}
+            </ul>
+          )}
         </section>
       )}
 
-      {tab === "Financeiro" && (
+      {tab === "Pagamentos" && (
         <section className="mt-5 rounded-xl border border-line bg-white px-5 py-4">
           <h2 className="text-[15px] font-semibold">Pagamentos</h2>
           <div className="mt-4 grid gap-4 sm:grid-cols-3">
@@ -964,6 +1077,21 @@ function RecordView({
             <Info label="Recebido" value={formatMoney(patient.paid)} />
             <Info label="Pendente" value={formatMoney(pending)} />
           </div>
+          {patient.payments.length === 0 ? (
+            <p className="mt-3 text-[13px] text-muted">Nenhum pagamento registrado.</p>
+          ) : (
+            <ul className="mt-4 space-y-3">
+              {patient.payments.map((item) => (
+                <li key={`${item.date}-${item.amount}`} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-line px-4 py-3">
+                  <div>
+                    <p className="text-[13px] font-semibold">{formatMoney(item.amount)}</p>
+                    <p className="text-[12px] text-muted">{formatDate(item.date)} · {item.method}</p>
+                  </div>
+                  <span className="text-[11px] font-semibold">{item.status}</span>
+                </li>
+              ))}
+            </ul>
+          )}
         </section>
       )}
 
@@ -1003,17 +1131,235 @@ function RecordView({
 
       {tab === "Mensagens" && (
         <section className="mt-5 rounded-xl border border-line bg-white px-5 py-4">
-          <h2 className="text-[15px] font-semibold">Contato</h2>
-          <div className="mt-4 grid gap-4 sm:grid-cols-2">
+          <h2 className="text-[15px] font-semibold">Mensagens e interações</h2>
+          <div className="mt-4 grid gap-4 sm:grid-cols-3">
             <Info label="Telefone" value={patient.phone} />
+            <Info label="WhatsApp" value={patient.whatsapp} />
             <Info label="E-mail" value={patient.email} />
           </div>
+          <form
+            className="mt-4 grid gap-3 rounded-lg border border-line px-4 py-3 sm:grid-cols-2"
+            onSubmit={(event) => {
+              event.preventDefault();
+              const summary = messageSummary.trim();
+              if (!summary) return;
+              onChange({
+                ...patient,
+                interactions: [
+                  { date: messageDate, channel: messageChannel, summary },
+                  ...patient.interactions,
+                ],
+              });
+              setMessageSummary("");
+            }}
+          >
+            <label className="block text-[11px] font-medium text-muted">
+              Data
+              <input
+                type="date"
+                value={messageDate}
+                onChange={(event) => setMessageDate(event.target.value)}
+                className="mt-1 w-full rounded-md border border-line px-3 py-2 text-[13px] outline-none focus:border-teal"
+              />
+            </label>
+            <label className="block text-[11px] font-medium text-muted">
+              Canal
+              <select
+                value={messageChannel}
+                onChange={(event) => setMessageChannel(event.target.value as Interaction["channel"])}
+                className="mt-1 w-full rounded-md border border-line px-3 py-2 text-[13px] outline-none focus:border-teal"
+              >
+                <option value="WhatsApp">WhatsApp</option>
+                <option value="E-mail">E-mail</option>
+                <option value="Telefone">Telefone</option>
+                <option value="Presencial">Presencial</option>
+              </select>
+            </label>
+            <label className="block text-[11px] font-medium text-muted sm:col-span-2">
+              Mensagem
+              <textarea
+                value={messageSummary}
+                onChange={(event) => setMessageSummary(event.target.value)}
+                rows={3}
+                placeholder="Descreva o contato ou a mensagem enviada"
+                className="mt-1 w-full rounded-md border border-line px-3 py-2 text-[13px] outline-none focus:border-teal"
+              />
+            </label>
+            <div className="sm:col-span-2 flex justify-end">
+              <button type="submit" className="inline-flex items-center gap-1.5 rounded-md bg-teal px-4 py-2 text-[13px] font-medium text-white hover:bg-navy">
+                <LuPlus size={14} /> Cadastrar mensagem
+              </button>
+            </div>
+          </form>
+          {patient.interactions.length === 0 ? (
+            <p className="mt-3 text-[13px] text-muted">Nenhuma interação registrada.</p>
+          ) : (
+            <ul className="mt-4 space-y-3">
+              {patient.interactions.map((item) => (
+                <li key={`${item.date}-${item.summary}`} className="rounded-lg border border-line px-4 py-3">
+                  <p className="text-[12px] font-semibold text-teal">{item.channel}</p>
+                  <p className="mt-1 text-[13px]">{item.summary}</p>
+                  <p className="mt-1 text-[12px] text-muted">{formatDate(item.date)}</p>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+      )}
+
+      {tab === "Faltas" && (
+        <section className="mt-5 rounded-xl border border-line bg-white px-5 py-4">
+          <h2 className="text-[15px] font-semibold">Faltas e cancelamentos</h2>
+          <p className="mt-1 text-[12px] text-muted">Vinculados à agenda. Mudar o status na Agenda atualiza esta lista.</p>
+          <form
+            className="mt-4 grid gap-3 rounded-lg border border-line px-4 py-3 sm:grid-cols-2"
+            onSubmit={(event) => {
+              event.preventDefault();
+              const procedure = absenceProcedure.trim();
+              if (!procedure) return;
+              const visit = {
+                date: absenceDate,
+                time: absenceTime,
+                procedure,
+                professional: patient.responsible,
+                status: absenceType === "Falta" ? "Falta" as const : "Cancelado" as const,
+                notes: absenceReason.trim(),
+              };
+              onChange({
+                ...patient,
+                consultations: [visit, ...patient.consultations],
+                absences: [{
+                  date: absenceDate,
+                  type: absenceType,
+                  procedure,
+                  reason: absenceReason.trim() || "Registrado no prontuário",
+                }, ...patient.absences],
+              });
+              setAbsenceProcedure("");
+              setAbsenceReason("");
+            }}
+          >
+            <label className="block text-[11px] font-medium text-muted">
+              Data
+              <input type="date" value={absenceDate} onChange={(event) => setAbsenceDate(event.target.value)} className="mt-1 w-full rounded-md border border-line px-3 py-2 text-[13px] outline-none focus:border-teal" />
+            </label>
+            <label className="block text-[11px] font-medium text-muted">
+              Horário
+              <input type="time" value={absenceTime} onChange={(event) => setAbsenceTime(event.target.value)} className="mt-1 w-full rounded-md border border-line px-3 py-2 text-[13px] outline-none focus:border-teal" />
+            </label>
+            <label className="block text-[11px] font-medium text-muted">
+              Tipo
+              <select value={absenceType} onChange={(event) => setAbsenceType(event.target.value as "Falta" | "Cancelamento")} className="mt-1 w-full rounded-md border border-line px-3 py-2 text-[13px] outline-none focus:border-teal">
+                <option value="Cancelamento">Cancelamento</option>
+                <option value="Falta">Falta</option>
+              </select>
+            </label>
+            <label className="block text-[11px] font-medium text-muted">
+              Procedimento
+              <input value={absenceProcedure} onChange={(event) => setAbsenceProcedure(event.target.value)} className="mt-1 w-full rounded-md border border-line px-3 py-2 text-[13px] outline-none focus:border-teal" />
+            </label>
+            <label className="block text-[11px] font-medium text-muted sm:col-span-2">
+              Motivo
+              <input value={absenceReason} onChange={(event) => setAbsenceReason(event.target.value)} className="mt-1 w-full rounded-md border border-line px-3 py-2 text-[13px] outline-none focus:border-teal" />
+            </label>
+            <div className="sm:col-span-2 flex justify-end">
+              <button type="submit" className="inline-flex items-center gap-1.5 rounded-md bg-teal px-4 py-2 text-[13px] font-medium text-white hover:bg-navy">
+                <LuPlus size={14} /> Registrar na agenda
+              </button>
+            </div>
+          </form>
+          {agendaAbsences(patient).length === 0 ? (
+            <p className="mt-3 text-[13px] text-muted">Nenhuma falta ou cancelamento na agenda.</p>
+          ) : (
+            <ul className="mt-4 space-y-3">
+              {agendaAbsences(patient).map((item) => (
+                <li key={`${item.date}-${item.time}-${item.procedure}`} className="rounded-lg border border-line px-4 py-3">
+                  <p className="text-[13px] font-semibold">{item.type} · {item.procedure}</p>
+                  <p className="mt-1 text-[12px] text-muted">{formatDate(item.date)} · {item.time} · {item.professional}</p>
+                  {item.reason && <p className="mt-2 text-[13px]">{item.reason}</p>}
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+      )}
+
+      {tab === "Retornos" && (
+        <section className="mt-5 rounded-xl border border-line bg-white px-5 py-4">
+          <h2 className="text-[15px] font-semibold">Retornos e manutenções</h2>
+          <p className="mt-1 text-[12px] text-muted">Vinculados à agenda. Compromissos com status Retorno ou manutenção aparecem aqui.</p>
+          <form
+            className="mt-4 grid gap-3 rounded-lg border border-line px-4 py-3 sm:grid-cols-2"
+            onSubmit={(event) => {
+              event.preventDefault();
+              const procedure = returnProcedure.trim() || returnType;
+              const visit = {
+                date: returnDate,
+                time: returnTime,
+                procedure,
+                professional: patient.responsible,
+                status: "Retorno" as const,
+                notes: returnType,
+              };
+              onChange({
+                ...patient,
+                upcoming: [visit, ...patient.upcoming],
+                followUps: [{
+                  date: returnDate,
+                  type: returnType,
+                  procedure,
+                  status: "Agendado",
+                }, ...patient.followUps],
+              });
+              setReturnProcedure("");
+            }}
+          >
+            <label className="block text-[11px] font-medium text-muted">
+              Data
+              <input type="date" value={returnDate} onChange={(event) => setReturnDate(event.target.value)} className="mt-1 w-full rounded-md border border-line px-3 py-2 text-[13px] outline-none focus:border-teal" />
+            </label>
+            <label className="block text-[11px] font-medium text-muted">
+              Horário
+              <input type="time" value={returnTime} onChange={(event) => setReturnTime(event.target.value)} className="mt-1 w-full rounded-md border border-line px-3 py-2 text-[13px] outline-none focus:border-teal" />
+            </label>
+            <label className="block text-[11px] font-medium text-muted">
+              Tipo
+              <select value={returnType} onChange={(event) => setReturnType(event.target.value as "Retorno" | "Manutenção")} className="mt-1 w-full rounded-md border border-line px-3 py-2 text-[13px] outline-none focus:border-teal">
+                <option value="Retorno">Retorno</option>
+                <option value="Manutenção">Manutenção</option>
+              </select>
+            </label>
+            <label className="block text-[11px] font-medium text-muted">
+              Procedimento
+              <input value={returnProcedure} onChange={(event) => setReturnProcedure(event.target.value)} placeholder="Ex.: Retorno da avaliação" className="mt-1 w-full rounded-md border border-line px-3 py-2 text-[13px] outline-none focus:border-teal" />
+            </label>
+            <div className="sm:col-span-2 flex justify-end">
+              <button type="submit" className="inline-flex items-center gap-1.5 rounded-md bg-teal px-4 py-2 text-[13px] font-medium text-white hover:bg-navy">
+                <LuPlus size={14} /> Agendar retorno
+              </button>
+            </div>
+          </form>
+          {agendaFollowUps(patient).length === 0 ? (
+            <p className="mt-3 text-[13px] text-muted">Nenhum retorno ou manutenção na agenda.</p>
+          ) : (
+            <ul className="mt-4 space-y-3">
+              {agendaFollowUps(patient).map((item) => (
+                <li key={`${item.date}-${item.time}-${item.procedure}`} className="rounded-lg border border-line px-4 py-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <p className="text-[13px] font-semibold">{item.type} · {item.procedure}</p>
+                    <span className="text-[11px] font-semibold">{item.status}</span>
+                  </div>
+                  <p className="mt-1 text-[12px] text-muted">{formatDate(item.date)} · {item.time} · {item.professional}</p>
+                </li>
+              ))}
+            </ul>
+          )}
         </section>
       )}
 
       {tab === "Anotações" && (
         <section className="mt-5 rounded-xl border border-line bg-white px-5 py-4">
-          <h2 className="text-[15px] font-semibold">Anotações</h2>
+          <h2 className="text-[15px] font-semibold">Observações internas</h2>
           <p className="mt-3 text-[13px]">{patient.notes || "Nenhuma anotação."}</p>
         </section>
       )}
@@ -1050,13 +1396,18 @@ function RowMenuButton({
 
 function PatientIdentity({ patient, onOpen }: { patient: Patient; onOpen: () => void }) {
   return (
-    <div>
-      <button type="button" onClick={onOpen} className="text-left font-semibold hover:text-teal">
-        {patient.name}
-      </button>
-      <p className="text-[11px] text-muted">{patient.protocol}</p>
-      <div className="mt-1">
-        <StatusBadge status={patient.status} />
+    <div className="flex items-center gap-3">
+      {patient.photo ? (
+        <img src={patient.photo} alt="" className="size-9 shrink-0 rounded-full object-cover" />
+      ) : null}
+      <div>
+        <button type="button" onClick={onOpen} className="text-left font-semibold hover:text-teal">
+          {patient.name}
+        </button>
+        <p className="text-[11px] text-muted">{patient.protocol}</p>
+        <div className="mt-1">
+          <StatusBadge status={patient.status} />
+        </div>
       </div>
     </div>
   );
@@ -1069,20 +1420,26 @@ export default function Pacientes({
   openProtocol?: string | null;
   onOpened?: () => void;
 }) {
-  const { patients, setPatients } = usePatients();
+  const { patients, setPatients, tags, setTags } = usePatients();
   const [query, setQuery] = useState("");
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [treatmentFilter, setTreatmentFilter] = useState("");
   const [stageFilter, setStageFilter] = useState("");
   const [responsibleFilter, setResponsibleFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
+  const [originFilter, setOriginFilter] = useState("");
+  const [tagFilter, setTagFilter] = useState("");
   const [funnelFilter, setFunnelFilter] = useState<(typeof patientFunnelFilters)[number]>("Todos");
+  const [segment, setSegment] = useState<ManagementSegment>("Todos");
+  const [customSegments, setCustomSegments] = useState<{ id: string; name: string }[]>([]);
+  const [customSegment, setCustomSegment] = useState("");
+  const [segmentName, setSegmentName] = useState("");
   const [menu, setMenu] = useState<MenuState | null>(null);
   const [viewingProtocol, setViewingProtocol] = useState<string | null>(openProtocol);
   const [draft, setDraft] = useState<Draft | null>(null);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
-  const filtersActive = Boolean(treatmentFilter || stageFilter || responsibleFilter || statusFilter);
+  const filtersActive = Boolean(treatmentFilter || stageFilter || responsibleFilter || statusFilter || originFilter || tagFilter);
   const stageOptions = treatmentFilter && isTreatment(treatmentFilter)
     ? stagesByTreatment[treatmentFilter]
     : allStages;
@@ -1092,15 +1449,21 @@ export default function Pacientes({
     return patients.filter((patient) => {
       const matchesQuery = !term
         || patient.name.toLowerCase().includes(term)
-        || patient.protocol.toLowerCase().includes(term);
+        || patient.protocol.toLowerCase().includes(term)
+        || patient.cpf.includes(term)
+        || patient.phone.replace(/\D/g, "").includes(term.replace(/\D/g, ""))
+        || patient.email.toLowerCase().includes(term);
       return matchesQuery
         && matchesFunnelFilter(patient, funnelFilter)
+        && matchesManagementSegment(patient, segment)
         && (!treatmentFilter || patient.treatment === treatmentFilter)
         && (!stageFilter || patient.stage === stageFilter)
         && (!responsibleFilter || patient.responsible === responsibleFilter)
-        && (!statusFilter || patient.status === statusFilter);
+        && (!statusFilter || patient.status === statusFilter)
+        && (!originFilter || patient.origin === originFilter)
+        && (!tagFilter || patient.tagIds.includes(tagFilter));
     });
-  }, [patients, query, funnelFilter, treatmentFilter, stageFilter, responsibleFilter, statusFilter]);
+  }, [patients, query, funnelFilter, segment, treatmentFilter, stageFilter, responsibleFilter, statusFilter, originFilter, tagFilter]);
 
   const viewing = patients.find((patient) => patient.protocol === viewingProtocol) ?? null;
   const menuPatient = patients.find((patient) => patient.protocol === menu?.protocol) ?? null;
@@ -1179,6 +1542,8 @@ export default function Pacientes({
     setStageFilter("");
     setResponsibleFilter("");
     setStatusFilter("");
+    setOriginFilter("");
+    setTagFilter("");
   }
 
   function savePatient() {
@@ -1211,12 +1576,21 @@ export default function Pacientes({
     }
 
     const current = patients.find((patient) => patient.protocol === draft.protocol);
+    const extras = emptyClinicalExtras();
     const saved: Patient = {
       protocol,
       name: draft.name.trim(),
+      photo: draft.photo,
+      cpf: draft.cpf.trim(),
       phone: draft.phone.trim(),
+      whatsapp: draft.whatsapp.trim() || draft.phone.trim(),
       email: draft.email.trim(),
       birthDate: draft.birthDate,
+      address: draft.address,
+      hasGuardian: draft.hasGuardian,
+      guardian: draft.hasGuardian ? draft.guardian : null,
+      tagIds: draft.tagIds,
+      origin: draft.origin,
       notes: draft.notes.trim(),
       treatment: draft.treatment,
       stage: draft.stage,
@@ -1227,15 +1601,27 @@ export default function Pacientes({
       paid,
       lastVisit: draft.lastVisit,
       nextAction: draft.nextAction.trim(),
-      history: current?.history ?? [],
-      upcoming: current?.upcoming ?? [],
-      consultations: current?.consultations ?? [],
+      history: current?.history ?? extras.history,
+      upcoming: current?.upcoming ?? extras.upcoming,
+      consultations: current?.consultations ?? extras.consultations,
+      procedures: current?.procedures ?? extras.procedures,
+      treatments: current?.treatments ?? extras.treatments,
+      plans: current?.plans ?? extras.plans,
+      quotes: current?.quotes ?? extras.quotes,
+      payments: current?.payments ?? extras.payments,
+      interactions: current?.interactions ?? extras.interactions,
+      absences: current?.absences ?? extras.absences,
+      followUps: current?.followUps ?? extras.followUps,
     };
+
+    const withPlan = current?.treatment !== saved.treatment
+      ? ensurePlanForTreatment(saved, saved.treatment, saved.responsible)
+      : saved;
 
     setPatients((currentList) => (
       draft.mode === "create"
-        ? [saved, ...currentList]
-        : currentList.map((patient) => (patient.protocol === draft.protocol ? saved : patient))
+        ? [withPlan, ...currentList]
+        : currentList.map((patient) => (patient.protocol === draft.protocol ? withPlan : patient))
     ));
     if (draft.mode === "create") {
       setQuery("");
@@ -1254,8 +1640,12 @@ export default function Pacientes({
         <RecordView
           key={viewing.protocol}
           patient={viewing}
+          tags={tags}
           onBack={() => setViewingProtocol(null)}
           onEdit={() => openEdit(viewing)}
+          onChange={(next) => {
+            setPatients((current) => current.map((item) => (item.protocol === next.protocol ? next : item)));
+          }}
         />
       ) : (
         <div className="mx-auto max-w-7xl animate-fade-in">
@@ -1292,7 +1682,7 @@ export default function Pacientes({
             <input
               value={query}
               onChange={(event) => setQuery(event.target.value)}
-              placeholder="Pesquisar por nome ou número do protocolo"
+              placeholder="Pesquisar por nome, protocolo, CPF, telefone ou e-mail"
               className="w-full bg-transparent text-[13px] outline-none placeholder:text-muted"
             />
           </label>
@@ -1334,6 +1724,50 @@ export default function Pacientes({
                   options={["Todos", ...statuses]}
                   onChange={(value) => setStatusFilter(value === "Todos" ? "" : value)}
                 />
+                <SelectField
+                  id="filtro-origem"
+                  label="Origem"
+                  value={originFilter || "Todas"}
+                  options={["Todas", ...origins]}
+                  onChange={(value) => setOriginFilter(value === "Todas" ? "" : value)}
+                />
+                <SelectField
+                  id="filtro-tag"
+                  label="Tag"
+                  value={tagFilter ? (tags.find((tag) => tag.id === tagFilter)?.label ?? "Todas") : "Todas"}
+                  options={["Todas", ...tags.map((tag) => tag.label)]}
+                  onChange={(value) => {
+                    if (value === "Todas") {
+                      setTagFilter("");
+                      return;
+                    }
+                    setTagFilter(tags.find((tag) => tag.label === value)?.id ?? "");
+                  }}
+                />
+              </div>
+              <div className="mt-4 flex flex-wrap items-end gap-2">
+                <label className="block min-w-48 flex-1">
+                  <span className="text-[11px] font-medium text-muted">Novo segmento</span>
+                  <input
+                    value={segmentName}
+                    onChange={(event) => setSegmentName(event.target.value)}
+                    placeholder="Ex.: Ortodontia VIP"
+                    className={controlClass}
+                  />
+                </label>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const name = segmentName.trim();
+                    if (!name) return;
+                    setCustomSegments((current) => [...current, { id: `seg-${Date.now()}`, name }]);
+                    setCustomSegment(name);
+                    setSegmentName("");
+                  }}
+                  className="rounded-md border border-line px-3 py-2 text-[13px] font-medium hover:bg-surface"
+                >
+                  Criar segmento
+                </button>
               </div>
               {filtersActive && (
                 <button type="button" onClick={clearFilters} className="mt-3 text-[12px] font-medium text-teal hover:underline">
@@ -1365,6 +1799,40 @@ export default function Pacientes({
                   </button>
                 ))}
               </div>
+            </div>
+
+            <div className="flex flex-wrap gap-1.5 border-b border-line bg-surface px-5 py-3">
+              {managementSegments.map((item) => (
+                <button
+                  key={item}
+                  type="button"
+                  onClick={() => {
+                    setSegment(item);
+                    setCustomSegment("");
+                  }}
+                  className={`rounded-full px-3 py-1.5 text-[12px] font-medium ${
+                    segment === item && !customSegment ? "bg-teal text-white" : "bg-white text-muted ring-1 ring-line hover:text-ink"
+                  }`}
+                >
+                  {item}
+                </button>
+              ))}
+              {customSegments.map((item) => (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => {
+                    setCustomSegment(item.name);
+                    const tag = tags.find((entry) => entry.label.toLowerCase() === item.name.toLowerCase());
+                    if (tag) setTagFilter(tag.id);
+                  }}
+                  className={`rounded-full px-3 py-1.5 text-[12px] font-medium ${
+                    customSegment === item.name ? "bg-navy text-white" : "bg-white text-muted ring-1 ring-line hover:text-ink"
+                  }`}
+                >
+                  {item.name}
+                </button>
+              ))}
             </div>
 
           {filtered.length === 0 ? (
@@ -1486,6 +1954,8 @@ export default function Pacientes({
         <PatientForm
           draft={draft}
           errors={errors}
+          tags={tags}
+          onAddTag={(tag) => setTags((current) => [...current, tag])}
           onChange={setDraft}
           onClose={() => {
             setDraft(null);

@@ -1,7 +1,10 @@
 import { createContext, useContext, useState } from "react";
 import type { ReactNode } from "react";
-import { LuPencil, LuPlus, LuX } from "react-icons/lu";
+import { LuKanban, LuLayoutGrid, LuPencil, LuPlus, LuX } from "react-icons/lu";
+import { stagesByTreatment } from "../data/clinicPatients";
+import { ensurePlanForTreatment } from "../data/treatmentPlan";
 import { usePatients } from "./Pacientes";
+import type { Treatment } from "../data/clinicPatients";
 
 export type ClinicTreatment = {
   id: string;
@@ -46,6 +49,18 @@ export function actionsForTreatment(treatments: ClinicTreatment[], patientTreatm
   return (found?.actions ?? "").split("\n").map((action) => action.trim()).filter(Boolean);
 }
 
+export function findClinicTreatment(treatments: ClinicTreatment[], patientTreatment: string) {
+  return treatments.find((item) => item.patientKey === patientTreatment || item.name === patientTreatment);
+}
+
+export function placementForTreatment(item: ClinicTreatment) {
+  const listed = item.stages.split("\n").map((stage) => stage.trim()).filter(Boolean);
+  const catalog = stagesByTreatment[item.patientKey as Treatment];
+  const stage = catalog?.[0] ?? listed[0] ?? "";
+  const treatment = (item.patientKey || item.name) as Treatment;
+  return { treatment, stage };
+}
+
 const emptyDraft = (): ClinicTreatment => ({
   id: "",
   name: "",
@@ -64,11 +79,21 @@ function money(value: string) {
   return number.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
 
-export default function Tratamentos() {
-  const { patients } = usePatients();
+function formatMoney(value: number) {
+  return value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+}
+
+export default function Tratamentos({
+  onOpenPatient,
+}: {
+  onOpenPatient?: (protocol: string) => void;
+}) {
+  const { patients, setPatients } = usePatients();
   const { treatments: items, setTreatments: setItems } = useTreatments();
   const [draft, setDraft] = useState<ClinicTreatment | null>(null);
   const [error, setError] = useState("");
+  const [view, setView] = useState<"cards" | "kanban">("cards");
+  const [overColumn, setOverColumn] = useState<string | null>(null);
 
   function openCreate() {
     setError("");
@@ -94,20 +119,126 @@ export default function Tratamentos() {
     setDraft(null);
   }
 
+  function movePatient(protocol: string, item: ClinicTreatment) {
+    const placement = placementForTreatment(item);
+    const price = Number(item.price);
+    const stageNames = item.stages.split("\n").map((stage) => stage.trim()).filter(Boolean);
+    setPatients((current) => current.map((patient) => {
+      if (patient.protocol !== protocol) return patient;
+      return ensurePlanForTreatment(patient, placement.treatment || patient.treatment, patient.responsible, {
+        duration: item.duration,
+        price: Number.isFinite(price) ? price : undefined,
+        stageNames,
+      });
+    }));
+  }
+
   return (
-    <main className="min-w-0 flex-1 overflow-y-auto bg-surface px-4 py-5 sm:px-8 sm:py-6">
-      <div className="mx-auto max-w-7xl">
-        <header className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+    <main className={`min-w-0 flex-1 bg-surface ${view === "kanban" ? "flex flex-col overflow-hidden" : "overflow-y-auto"} px-4 py-5 sm:px-8 sm:py-6`}>
+      <div className={view === "kanban" ? "flex min-h-0 flex-1 flex-col" : "mx-auto max-w-7xl"}>
+        <header className="flex shrink-0 flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div>
             <p className="text-[11px] font-semibold text-teal">ÁUREA ODONTO</p>
             <h1 className="mt-0.5 text-[28px] font-semibold leading-tight">Tratamentos</h1>
-            <p className="text-[13px] text-muted">Tipos de tratamento oferecidos pela clínica e o fluxo de cada um.</p>
+            <p className="text-[13px] text-muted">
+              {view === "kanban"
+                ? "Pacientes agrupados por tipo de tratamento. Arraste o card para mover."
+                : "Tipos de tratamento oferecidos pela clínica e o fluxo de cada um."}
+            </p>
           </div>
-          <button type="button" onClick={openCreate} className="inline-flex items-center gap-2 rounded-md bg-teal px-4 py-2.5 text-[13px] font-medium text-white hover:bg-navy">
-            <LuPlus size={15} /> Cadastrar tratamento
-          </button>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => setView((current) => (current === "cards" ? "kanban" : "cards"))}
+              className="inline-flex items-center gap-2 rounded-md border border-line bg-white px-4 py-2.5 text-[13px] font-medium hover:bg-surface"
+            >
+              {view === "cards" ? <LuKanban size={15} /> : <LuLayoutGrid size={15} />}
+              {view === "cards" ? "Ver kanban" : "Ver cards"}
+            </button>
+            <button type="button" onClick={openCreate} className="inline-flex items-center gap-2 rounded-md bg-teal px-4 py-2.5 text-[13px] font-medium text-white hover:bg-navy">
+              <LuPlus size={15} /> Cadastrar tratamento
+            </button>
+          </div>
         </header>
 
+        {view === "kanban" ? (
+          <div className="mt-4 flex min-h-0 flex-1 gap-3 overflow-x-auto pb-1">
+            {items.map((item) => {
+              const related = patients.filter((patient) => patient.treatment === item.patientKey);
+              return (
+                <section
+                  key={item.id}
+                  className={`flex w-72 shrink-0 flex-col rounded-lg border bg-white ${
+                    overColumn === item.id ? "border-teal" : "border-line"
+                  }`}
+                  onDragOver={(event) => {
+                    event.preventDefault();
+                    setOverColumn(item.id);
+                  }}
+                  onDragLeave={() => setOverColumn((current) => (current === item.id ? null : current))}
+                  onDrop={(event) => {
+                    event.preventDefault();
+                    const protocol = event.dataTransfer.getData("text/plain");
+                    if (protocol) movePatient(protocol, item);
+                    setOverColumn(null);
+                  }}
+                >
+                  <header className="border-b border-line px-3 py-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <h2 className="text-[13px] font-semibold">{item.name}</h2>
+                      <span className="rounded-full bg-surface px-2 py-0.5 text-[11px] font-semibold text-muted">{related.length}</span>
+                    </div>
+                    <p className="mt-1 text-[10px] text-muted">{item.active ? "Ativo" : "Inativo"}</p>
+                  </header>
+                  <div className="flex min-h-40 flex-1 flex-col gap-2 overflow-y-auto p-2">
+                    {related.length === 0 && (
+                      <p className="px-2 py-6 text-center text-[12px] text-muted">Nenhum paciente neste tratamento</p>
+                    )}
+                    {related.map((patient) => (
+                      <article
+                        key={patient.protocol}
+                        draggable
+                        onDragStart={(event) => {
+                          const target = event.target;
+                          if (target instanceof Element && target.closest("button")) {
+                            event.preventDefault();
+                            return;
+                          }
+                          event.dataTransfer.setData("text/plain", patient.protocol);
+                          event.dataTransfer.effectAllowed = "move";
+                        }}
+                        className="cursor-grab rounded-lg border border-line bg-surface p-3 active:cursor-grabbing"
+                      >
+                        <button
+                          type="button"
+                          onClick={() => onOpenPatient?.(patient.protocol)}
+                          className="text-left text-[14px] font-semibold hover:text-teal"
+                        >
+                          {patient.name}
+                        </button>
+                        <p className="mt-1 text-[11px] text-muted">{patient.protocol}</p>
+                        <dl className="mt-2 space-y-1 text-[12px]">
+                          <div className="flex justify-between gap-2">
+                            <dt className="text-muted">Etapa</dt>
+                            <dd className="text-right font-medium">{patient.stage}</dd>
+                          </div>
+                          <div className="flex justify-between gap-2">
+                            <dt className="text-muted">Responsável</dt>
+                            <dd className="text-right font-medium">{patient.responsible}</dd>
+                          </div>
+                          <div className="flex justify-between gap-2">
+                            <dt className="text-muted">Valor</dt>
+                            <dd className="font-medium tabular-nums">{formatMoney(patient.value)}</dd>
+                          </div>
+                        </dl>
+                      </article>
+                    ))}
+                  </div>
+                </section>
+              );
+            })}
+          </div>
+        ) : (
         <ul className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           {items.map((item) => {
             const related = patients.filter((patient) => patient.treatment === item.patientKey);
@@ -140,13 +271,19 @@ export default function Tratamentos() {
                     <li key={action}>{action}</li>
                   ))}
                 </ul>
-                <button type="button" onClick={() => openEdit(item)} className="mt-3 inline-flex items-center gap-1.5 text-[12px] font-medium text-teal hover:underline">
-                  <LuPencil size={13} /> Editar
-                </button>
+                <div className="mt-3 flex flex-wrap gap-3">
+                  <button type="button" onClick={() => setView("kanban")} className="inline-flex items-center gap-1.5 text-[12px] font-medium text-teal hover:underline">
+                    <LuKanban size={13} /> Ver kanban
+                  </button>
+                  <button type="button" onClick={() => openEdit(item)} className="inline-flex items-center gap-1.5 text-[12px] font-medium text-teal hover:underline">
+                    <LuPencil size={13} /> Editar
+                  </button>
+                </div>
               </li>
             );
           })}
         </ul>
+        )}
       </div>
 
       {draft && (
