@@ -1,6 +1,6 @@
-export const treatments = ["Avaliação", "Limpeza", "Clareamento", "Restauração", "Canal", "Implante", "Ortodontia"] as const;
-export const responsibles = ["Dra. Priscila", "Dr. Rafael"] as const;
-export const clinicUsers = ["Dra. Priscila", "Dr. Rafael", "Recepção", "Financeiro"] as const;
+﻿export const treatments = ["Avaliação", "Limpeza", "Clareamento", "Restauração", "Canal", "Implante", "Ortodontia"] as const;
+export const responsibles = ["Dra. Amanda", "Dr. Rafael"] as const;
+export const clinicUsers = ["Dra. Amanda", "Dr. Rafael", "Recepção", "Financeiro"] as const;
 export const statuses = ["Ativo", "Em tratamento", "Aguardando retorno", "Inativo"] as const;
 export const origins = [
   "Indicação",
@@ -29,7 +29,7 @@ export type ClinicTask = {
 };
 
 export const initialTasks: ClinicTask[] = [
-  { id: "task-1", title: "Confirmar sessão 3 de clareamento", date: "2026-10-19", time: "09:00", patientProtocol: "OZ-0006", assignee: "Dra. Priscila", notes: "Ligar pela manhã.", done: false },
+  { id: "task-1", title: "Confirmar sessão 3 de clareamento", date: "2026-10-19", time: "09:00", patientProtocol: "OZ-0006", assignee: "Dra. Amanda", notes: "Ligar pela manhã.", done: false },
   { id: "task-2", title: "Reativar contato do orçamento", date: "2026-10-16", time: "11:00", patientProtocol: "OZ-0010", assignee: "Recepção", notes: "Lead de lentes parado.", done: false },
   { id: "task-3", title: "Cobrar parcela em atraso", date: "2026-10-16", time: "14:00", patientProtocol: "OZ-0011", assignee: "Financeiro", notes: "Boleto do canal.", done: false },
 ];
@@ -82,8 +82,12 @@ export type Consultation = {
   time: string;
   procedure: string;
   professional: string;
-  status?: "Agendado" | "Confirmado" | "Em atendimento" | "Concluído" | "Atrasado" | "Cancelado" | "Retorno" | "Falta";
+  status?: "Agendado" | "Confirmado" | "Chegou" | "Em atendimento" | "Concluído" | "Atrasado" | "Cancelado" | "Retorno" | "Falta";
   notes?: string;
+  durationMin?: number;
+  encaixe?: boolean;
+  reminded24h?: boolean;
+  reminded2h?: boolean;
 };
 
 export type Procedure = {
@@ -141,13 +145,90 @@ export type TreatmentPlan = {
   history: PlanHistory[];
 };
 
+export const quoteStatuses = [
+  "Rascunho",
+  "Pendente",
+  "Enviado",
+  "Visualizado",
+  "Em negociação",
+  "Aprovado",
+  "Recusado",
+  "Expirado",
+] as const;
+
+export type QuoteStatus = (typeof quoteStatuses)[number];
+
+export type QuoteLine = {
+  id: string;
+  name: string;
+  quantity: number;
+  unitValue: number;
+};
+
+export type QuoteEvent = {
+  date: string;
+  text: string;
+};
+
 export type Quote = {
   id: string;
   date: string;
   title: string;
   value: number;
-  status: "Aprovado" | "Pendente" | "Recusado" | "Expirado";
+  status: QuoteStatus;
+  procedures?: QuoteLine[];
+  discount?: number;
+  paymentTerms?: string;
+  planId?: string;
+  token?: string;
+  sentAt?: string;
+  viewedAt?: string;
+  sentChannel?: "WhatsApp" | "E-mail" | "Link" | "";
+  negotiation?: string;
+  expiresAt?: string;
+  history?: QuoteEvent[];
 };
+
+export function quoteGross(quote: Quote) {
+  const lines = quote.procedures ?? [];
+  if (lines.length === 0) return quote.value + (quote.discount ?? 0);
+  return lines.reduce((sum, item) => sum + item.quantity * item.unitValue, 0);
+}
+
+export function quoteNet(quote: Quote) {
+  return Math.max(0, quoteGross(quote) - (quote.discount ?? 0));
+}
+
+export function hydrateQuote(quote: Quote): Quote {
+  const procedures = quote.procedures?.length
+    ? quote.procedures
+    : [{ id: `${quote.id}-1`, name: quote.title, quantity: 1, unitValue: quote.value }];
+  const discount = quote.discount ?? 0;
+  const status = quote.status === "Pendente" ? "Enviado" : quote.status;
+  return {
+    ...quote,
+    procedures,
+    discount,
+    value: Math.max(0, procedures.reduce((sum, item) => sum + item.quantity * item.unitValue, 0) - discount),
+    status,
+    paymentTerms: quote.paymentTerms ?? "A combinar",
+    planId: quote.planId ?? "",
+    token: quote.token ?? quote.id.toLowerCase().replace(/\W/g, ""),
+    sentAt: quote.sentAt ?? (status === "Rascunho" ? "" : quote.date),
+    viewedAt: quote.viewedAt ?? "",
+    sentChannel: quote.sentChannel ?? "",
+    negotiation: quote.negotiation ?? "",
+    expiresAt: quote.expiresAt ?? "",
+    history: quote.history ?? [{ date: quote.date, text: `Orçamento ${status.toLowerCase()}` }],
+  };
+}
+
+export function hydrateQuotes(patients: Patient[]): Patient[] {
+  return patients.map((patient) => ({
+    ...patient,
+    quotes: patient.quotes.map(hydrateQuote),
+  }));
+}
 
 export type Payment = {
   date: string;
@@ -173,7 +254,31 @@ export type FollowUp = {
   date: string;
   type: "Retorno" | "Manutenção";
   procedure: string;
-  status: "Agendado" | "Realizado" | "Atrasado";
+  status: "Agendado" | "Realizado" | "Atrasado" | "Pendente";
+  reminder?: boolean;
+  notified?: boolean;
+};
+
+export const maintenanceKinds = ["Aparelho", "Limpeza", "Avaliação", "Implante", "Prótese", "Recorrente"] as const;
+export type MaintenanceKind = (typeof maintenanceKinds)[number];
+
+export const periodicityOptions = [
+  { days: 30, label: "30 dias" },
+  { days: 90, label: "3 meses" },
+  { days: 180, label: "6 meses" },
+  { days: 365, label: "12 meses" },
+] as const;
+
+export type MaintenancePlan = {
+  id: string;
+  kind: MaintenanceKind;
+  procedure: string;
+  periodicityDays: number;
+  nextDate: string;
+  lastDone: string;
+  reminderDays: number;
+  reminderSent: boolean;
+  status: "Ativa" | "Pausada";
 };
 
 export type Patient = {
@@ -211,6 +316,9 @@ export type Patient = {
   interactions: Interaction[];
   absences: Absence[];
   followUps: FollowUp[];
+  maintenances?: MaintenancePlan[];
+  odontogram?: import("./odontogram").ToothEvent[];
+  chart?: import("./clinicalRecord").ClinicalChart;
 };
 
 export const defaultTagCatalog: TagDef[] = [
@@ -225,6 +333,11 @@ export const defaultTagCatalog: TagDef[] = [
   { id: "pedo", label: "Odontopediatria", color: "#19d3a2" },
   { id: "clareamento", label: "Clareamento", color: "#0687b5" },
   { id: "vip", label: "VIP", color: "#c9a227" },
+  { id: "faceta", label: "Facetas", color: "#c45c8a" },
+  { id: "alinhador", label: "Alinhador", color: "#3d7ea6" },
+  { id: "bruxismo", label: "Bruxismo", color: "#8a5a2b" },
+  { id: "siso", label: "Siso", color: "#4a6670" },
+  { id: "geriatria", label: "Odontogeriatria", color: "#5b4b8a" },
 ];
 
 export const stagesByTreatment: Record<Treatment, readonly string[]> = {
@@ -261,7 +374,160 @@ export const emptyClinicalExtras = () => ({
   interactions: [] as Interaction[],
   absences: [] as Absence[],
   followUps: [] as FollowUp[],
+  maintenances: [] as MaintenancePlan[],
+  odontogram: [] as import("./odontogram").ToothEvent[],
+  chart: { anamnesis: [], evolutions: [], documents: [], permissions: {}, audit: [] } as import("./clinicalRecord").ClinicalChart,
 });
+
+function addDays(iso: string, days: number) {
+  const date = new Date(`${iso}T12:00:00`);
+  date.setDate(date.getDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+
+export function enrichPatientHistory(patients: Patient[]): Patient[] {
+  return patients.map((patient) => {
+    if (patient.history.length >= 4) return patient;
+    const pro = patient.responsible;
+    const extraHistory = [
+      { date: "2025-11-18", procedure: "Consulta de rotina", professional: pro, notes: "Sem queixas agudas. Higiene regular." },
+      { date: "2026-02-09", procedure: "Reavaliação", professional: pro, notes: "Acompanhamento do plano terapêutico." },
+      { date: "2026-06-14", procedure: "Controle clínico", professional: pro, notes: "Tecidos moles sem alteração." },
+    ].filter((item) => !patient.history.some((entry) => entry.date === item.date));
+    const extraConsult = extraHistory.map((item, index) => ({
+      date: item.date,
+      time: ["09:00", "10:30", "15:00"][index] ?? "09:00",
+      procedure: item.procedure,
+      professional: pro,
+      status: "Concluído" as const,
+      notes: item.notes,
+    }));
+    const extraProc = extraHistory.map((item) => ({
+      date: item.date,
+      name: item.procedure,
+      tooth: "Arcada",
+      professional: pro,
+      notes: item.notes,
+    }));
+    const extraPay = patient.payments.length ? [] : [
+      { date: patient.lastVisit || "2026-09-01", method: "Pix", amount: Math.min(patient.paid, 200) || 150, status: "Pago" as const },
+    ];
+    const extraMsg = [
+      { date: "2026-09-20", channel: "WhatsApp" as const, summary: "Confirmação de horário e orientação pré-consulta." },
+    ].filter((item) => !patient.interactions.some((entry) => entry.summary === item.summary));
+    const extraAbsence = patient.absences.length ? [] : [
+      { date: "2026-03-04", type: "Cancelamento" as const, procedure: "Consulta", reason: "Imprevisto familiar. Reagendado." },
+    ];
+    const extraFollow = patient.followUps.length ? [] : [
+      { date: "2026-12-10", type: "Manutenção" as const, procedure: "Retorno de manutenção", status: "Agendado" as const },
+    ];
+    return {
+      ...patient,
+      history: [...patient.history, ...extraHistory].sort((a, b) => b.date.localeCompare(a.date)),
+      consultations: [...patient.consultations, ...extraConsult],
+      procedures: [...patient.procedures, ...extraProc],
+      treatments: patient.treatments.length >= 2 ? patient.treatments : [
+        ...patient.treatments,
+        { name: patient.treatment, stage: patient.stage, status: patient.status === "Inativo" ? "Pausado" : "Em andamento", startedAt: patient.lastVisit, professional: pro },
+      ],
+      quotes: patient.quotes.length >= 2 ? patient.quotes : [
+        ...patient.quotes,
+        { id: `ORC-${patient.protocol.slice(-3)}-B`, date: "2026-06-14", title: `Manutenção — ${patient.treatment}`, value: 280, status: "Aprovado" },
+      ],
+      payments: [...patient.payments, ...extraPay],
+      interactions: [...patient.interactions, ...extraMsg],
+      absences: [...patient.absences, ...extraAbsence],
+      followUps: [...patient.followUps, ...extraFollow],
+    };
+  });
+}
+
+export function seedMaintenances(patients: Patient[]): Patient[] {
+  return patients.map((patient) => {
+    if ((patient.maintenances ?? []).length > 0) return patient;
+    const plans: MaintenancePlan[] = [];
+    const last = patient.lastVisit || "2026-10-01";
+    if (patient.treatment === "Ortodontia" || patient.tagIds.includes("orto")) {
+      plans.push({
+        id: `man-${patient.protocol}-aparelho`,
+        kind: "Aparelho",
+        procedure: "Manutenção de aparelho",
+        periodicityDays: 30,
+        lastDone: last,
+        nextDate: addDays(last, 30),
+        reminderDays: 3,
+        reminderSent: false,
+        status: "Ativa",
+      });
+    }
+    if (patient.treatment === "Limpeza" || patient.tagIds.includes("perio")) {
+      plans.push({
+        id: `man-${patient.protocol}-limpeza`,
+        kind: "Limpeza",
+        procedure: "Limpeza periódica",
+        periodicityDays: 180,
+        lastDone: last,
+        nextDate: addDays(last, 180),
+        reminderDays: 7,
+        reminderSent: false,
+        status: "Ativa",
+      });
+    }
+    if (patient.treatment === "Avaliação") {
+      plans.push({
+        id: `man-${patient.protocol}-avaliacao`,
+        kind: "Avaliação",
+        procedure: "Avaliação periódica",
+        periodicityDays: 180,
+        lastDone: last,
+        nextDate: addDays(last, 180),
+        reminderDays: 7,
+        reminderSent: false,
+        status: "Ativa",
+      });
+    }
+    if (patient.treatment === "Implante" || patient.tagIds.includes("implante")) {
+      plans.push({
+        id: `man-${patient.protocol}-implante`,
+        kind: "Implante",
+        procedure: "Acompanhamento de implante",
+        periodicityDays: 180,
+        lastDone: last,
+        nextDate: addDays(last, 180),
+        reminderDays: 7,
+        reminderSent: false,
+        status: "Ativa",
+      });
+    }
+    if (patient.tagIds.includes("protese")) {
+      plans.push({
+        id: `man-${patient.protocol}-protese`,
+        kind: "Prótese",
+        procedure: "Acompanhamento de prótese",
+        periodicityDays: 180,
+        lastDone: last,
+        nextDate: addDays(last, 180),
+        reminderDays: 7,
+        reminderSent: false,
+        status: "Ativa",
+      });
+    }
+    if (patient.treatment === "Canal" || patient.treatment === "Clareamento") {
+      plans.push({
+        id: `man-${patient.protocol}-recorrente`,
+        kind: "Recorrente",
+        procedure: patient.treatment === "Canal" ? "Revisão endodôntica" : "Revisão de clareamento",
+        periodicityDays: 90,
+        lastDone: last,
+        nextDate: addDays(last, 90),
+        reminderDays: 5,
+        reminderSent: false,
+        status: "Ativa",
+      });
+    }
+    return { ...patient, maintenances: plans };
+  });
+}
 
 export function visitsOf(patient: Patient) {
   return [...patient.upcoming, ...patient.consultations];
@@ -325,50 +591,70 @@ export const initialPatients: Patient[] = [
     treatment: "Avaliação",
     stage: "Triagem",
     funnelStage: "Avaliação",
-    responsible: "Dra. Priscila",
+    responsible: "Dra. Amanda",
     status: "Ativo",
     value: 350,
     paid: 0,
     lastVisit: "2026-10-05",
     nextAction: "Enviar orçamento",
     history: [
-      { date: "2026-10-05", procedure: "Avaliação inicial", professional: "Dra. Priscila", notes: "Queixa de sensibilidade. Exames solicitados." },
-      { date: "2026-07-22", procedure: "Profilaxia", professional: "Dra. Priscila", notes: "Gengiva saudável. Orientação de higiene." },
+      { date: "2026-10-05", procedure: "Avaliação inicial", professional: "Dra. Amanda", notes: "Queixa de sensibilidade. Exames solicitados." },
+      { date: "2026-09-02", procedure: "Moldagem para clareamento", professional: "Dra. Amanda", notes: "Moldeira em laboratório." },
+      { date: "2026-07-22", procedure: "Profilaxia", professional: "Dra. Amanda", notes: "Gengiva saudável. Orientação de higiene." },
+      { date: "2026-04-11", procedure: "Restauração 15", professional: "Dr. Rafael", notes: "Resina em face oclusal. Oclusão ok." },
+      { date: "2025-12-03", procedure: "Consulta de rotina", professional: "Dra. Amanda", notes: "Sem cárie ativa. Indicado clareamento." },
     ],
     upcoming: [
-      { date: "2026-10-16", time: "14:00", procedure: "Avaliação", professional: "Dra. Priscila", status: "Agendado" },
-      { date: "2026-10-20", time: "15:00", procedure: "Retorno da avaliação", professional: "Dra. Priscila", status: "Confirmado" },
+      { date: "2026-10-16", time: "14:00", procedure: "Avaliação", professional: "Dra. Amanda", status: "Agendado" },
+      { date: "2026-10-20", time: "15:00", procedure: "Retorno da avaliação", professional: "Dra. Amanda", status: "Confirmado" },
+      { date: "2026-11-05", time: "10:00", procedure: "1ª sessão de clareamento", professional: "Dra. Amanda", status: "Agendado" },
     ],
     consultations: [
-      { date: "2026-07-22", time: "09:00", procedure: "Profilaxia", professional: "Dra. Priscila", status: "Concluído" },
-      { date: "2026-10-05", time: "16:00", procedure: "Avaliação", professional: "Dra. Priscila", status: "Concluído" },
+      { date: "2025-12-03", time: "09:30", procedure: "Consulta de rotina", professional: "Dra. Amanda", status: "Concluído" },
+      { date: "2026-04-11", time: "11:00", procedure: "Restauração", professional: "Dr. Rafael", status: "Concluído" },
+      { date: "2026-07-22", time: "09:00", procedure: "Profilaxia", professional: "Dra. Amanda", status: "Concluído" },
+      { date: "2026-08-03", time: "14:00", procedure: "Limpeza", professional: "Dra. Amanda", status: "Cancelado", notes: "Viagem de trabalho." },
+      { date: "2026-09-02", time: "16:30", procedure: "Moldagem", professional: "Dra. Amanda", status: "Concluído" },
+      { date: "2026-10-05", time: "16:00", procedure: "Avaliação", professional: "Dra. Amanda", status: "Concluído" },
     ],
     procedures: [
-      { date: "2026-07-22", name: "Profilaxia e aplicação de flúor", tooth: "Arcada", professional: "Dra. Priscila", notes: "Sem intercorrências." },
-      { date: "2026-10-05", name: "Exame clínico e periapicais", tooth: "15 e 16", professional: "Dra. Priscila", notes: "Sensibilidade ao frio." },
+      { date: "2025-12-03", name: "Exame clínico e radiografia bitewing", tooth: "Arcada", professional: "Dra. Amanda", notes: "Sem lesão interproximal." },
+      { date: "2026-04-11", name: "Restauração em resina composta", tooth: "15", professional: "Dr. Rafael", notes: "Classe I oclusal." },
+      { date: "2026-07-22", name: "Profilaxia e aplicação de flúor", tooth: "Arcada", professional: "Dra. Amanda", notes: "Sem intercorrências." },
+      { date: "2026-09-02", name: "Moldagem para moldeira de clareamento", tooth: "Arcada", professional: "Dra. Amanda", notes: "Alginato + modelo em gesso." },
+      { date: "2026-10-05", name: "Exame clínico e periapicais", tooth: "15 e 16", professional: "Dra. Amanda", notes: "Sensibilidade ao frio." },
     ],
     treatments: [
-      { name: "Avaliação estética", stage: "Triagem", status: "Em andamento", startedAt: "2026-10-05", professional: "Dra. Priscila" },
-      { name: "Clareamento", stage: "Orçamento", status: "Pendente", startedAt: "2026-10-05", professional: "Dra. Priscila" },
+      { name: "Avaliação estética", stage: "Triagem", status: "Em andamento", startedAt: "2026-10-05", professional: "Dra. Amanda" },
+      { name: "Clareamento", stage: "Orçamento", status: "Pendente", startedAt: "2026-10-05", professional: "Dra. Amanda" },
+      { name: "Restauração 15", stage: "Revisão", status: "Concluído", startedAt: "2026-04-11", professional: "Dr. Rafael" },
     ],
     quotes: [
       { id: "ORC-104", date: "2026-10-06", title: "Clareamento em consultório (3 sessões)", value: 1800, status: "Pendente" },
+      { id: "ORC-101", date: "2026-09-02", title: "Moldeira + gel de clareamento caseiro", value: 890, status: "Aprovado" },
       { id: "ORC-088", date: "2026-07-22", title: "Profilaxia", value: 220, status: "Aprovado" },
+      { id: "ORC-061", date: "2026-04-11", title: "Restauração em resina 15", value: 380, status: "Aprovado" },
     ],
     payments: [
+      { date: "2026-04-11", method: "Pix", amount: 380, status: "Pago" },
       { date: "2026-07-22", method: "Pix", amount: 220, status: "Pago" },
+      { date: "2026-09-02", method: "Cartão", amount: 890, status: "Pago" },
       { date: "2026-10-20", method: "Cartão", amount: 350, status: "Em aberto" },
     ],
     interactions: [
+      { date: "2026-10-12", channel: "E-mail", summary: "Enviado comparativo de clareamento em consultório vs. caseiro." },
       { date: "2026-10-06", channel: "WhatsApp", summary: "Enviado lembrete da avaliação e pedido de fotos intraorais." },
       { date: "2026-10-05", channel: "Presencial", summary: "Orientação sobre clareamento e sensibilidade." },
       { date: "2026-09-12", channel: "WhatsApp", summary: "Lead convertido após anúncio de Instagram." },
+      { date: "2026-08-03", channel: "Telefone", summary: "Cancelou limpeza por viagem e reagendou profilaxia." },
     ],
     absences: [
       { date: "2026-08-03", type: "Cancelamento", procedure: "Limpeza", reason: "Viagem de trabalho. Reagendou." },
+      { date: "2026-05-19", type: "Falta", procedure: "Revisão da restauração", reason: "Não compareceu. Contato no dia seguinte." },
     ],
     followUps: [
       { date: "2026-10-20", type: "Retorno", procedure: "Retorno da avaliação", status: "Agendado" },
+      { date: "2026-11-05", type: "Retorno", procedure: "1ª sessão de clareamento", status: "Agendado" },
       { date: "2027-01-22", type: "Manutenção", procedure: "Profilaxia semestral", status: "Agendado" },
     ],
   },
@@ -390,29 +676,29 @@ export const initialPatients: Patient[] = [
     treatment: "Restauração",
     stage: "Revisão",
     funnelStage: "Orçamento",
-    responsible: "Dra. Priscila",
+    responsible: "Dra. Amanda",
     status: "Aguardando retorno",
     value: 890,
     paid: 890,
     lastVisit: "2026-09-28",
     nextAction: "Agendar revisão",
     history: [
-      { date: "2026-09-14", procedure: "Restauração", professional: "Dra. Priscila", notes: "Restauração em resina no dente 16." },
-      { date: "2026-09-28", procedure: "Revisão", professional: "Dra. Priscila", notes: "Adaptação boa. Orientado retorno em 30 dias." },
+      { date: "2026-09-14", procedure: "Restauração", professional: "Dra. Amanda", notes: "Restauração em resina no dente 16." },
+      { date: "2026-09-28", procedure: "Revisão", professional: "Dra. Amanda", notes: "Adaptação boa. Orientado retorno em 30 dias." },
       { date: "2026-03-11", procedure: "Urgência", professional: "Dr. Rafael", notes: "Dor aguda. Restauração provisória." },
     ],
     upcoming: [],
     consultations: [
       { date: "2026-03-11", time: "18:30", procedure: "Urgência", professional: "Dr. Rafael", status: "Concluído" },
-      { date: "2026-09-14", time: "09:00", procedure: "Restauração", professional: "Dra. Priscila", status: "Concluído" },
-      { date: "2026-09-28", time: "09:30", procedure: "Revisão", professional: "Dra. Priscila", status: "Concluído" },
+      { date: "2026-09-14", time: "09:00", procedure: "Restauração", professional: "Dra. Amanda", status: "Concluído" },
+      { date: "2026-09-28", time: "09:30", procedure: "Revisão", professional: "Dra. Amanda", status: "Concluído" },
     ],
     procedures: [
       { date: "2026-03-11", name: "Restauração provisória", tooth: "16", professional: "Dr. Rafael", notes: "Alívio da dor." },
-      { date: "2026-09-14", name: "Restauração em resina", tooth: "16", professional: "Dra. Priscila", notes: "Oclusão ajustada." },
+      { date: "2026-09-14", name: "Restauração em resina", tooth: "16", professional: "Dra. Amanda", notes: "Oclusão ajustada." },
     ],
     treatments: [
-      { name: "Restauração 16", stage: "Revisão", status: "Em andamento", startedAt: "2026-09-14", professional: "Dra. Priscila" },
+      { name: "Restauração 16", stage: "Revisão", status: "Em andamento", startedAt: "2026-09-14", professional: "Dra. Amanda" },
     ],
     quotes: [
       { id: "ORC-091", date: "2026-09-10", title: "Restauração em resina — dente 16", value: 890, status: "Aprovado" },
@@ -447,29 +733,29 @@ export const initialPatients: Patient[] = [
     treatment: "Limpeza",
     stage: "Realizada",
     funnelStage: "Concluído",
-    responsible: "Dra. Priscila",
+    responsible: "Dra. Amanda",
     status: "Ativo",
     value: 180,
     paid: 180,
     lastVisit: "2026-10-05",
     nextAction: "Profilaxia em 6 meses",
     history: [
-      { date: "2026-10-05", procedure: "Limpeza", professional: "Dra. Priscila", notes: "Profilaxia concluída sem intercorrências." },
-      { date: "2026-04-02", procedure: "Raspagem periodontal", professional: "Dra. Priscila", notes: "Bolsa de 4 mm no 46." },
+      { date: "2026-10-05", procedure: "Limpeza", professional: "Dra. Amanda", notes: "Profilaxia concluída sem intercorrências." },
+      { date: "2026-04-02", procedure: "Raspagem periodontal", professional: "Dra. Amanda", notes: "Bolsa de 4 mm no 46." },
     ],
     upcoming: [
-      { date: "2027-04-05", time: "08:30", procedure: "Profilaxia", professional: "Dra. Priscila", status: "Agendado" },
+      { date: "2027-04-05", time: "08:30", procedure: "Profilaxia", professional: "Dra. Amanda", status: "Agendado" },
     ],
     consultations: [
-      { date: "2026-04-02", time: "08:00", procedure: "Periodontia", professional: "Dra. Priscila", status: "Concluído" },
-      { date: "2026-10-05", time: "08:00", procedure: "Limpeza", professional: "Dra. Priscila", status: "Concluído" },
+      { date: "2026-04-02", time: "08:00", procedure: "Periodontia", professional: "Dra. Amanda", status: "Concluído" },
+      { date: "2026-10-05", time: "08:00", procedure: "Limpeza", professional: "Dra. Amanda", status: "Concluído" },
     ],
     procedures: [
-      { date: "2026-04-02", name: "Raspagem subgengival", tooth: "46", professional: "Dra. Priscila", notes: "Sangramento controlado." },
-      { date: "2026-10-05", name: "Profilaxia", tooth: "Arcada", professional: "Dra. Priscila", notes: "Manutenção periodontal." },
+      { date: "2026-04-02", name: "Raspagem subgengival", tooth: "46", professional: "Dra. Amanda", notes: "Sangramento controlado." },
+      { date: "2026-10-05", name: "Profilaxia", tooth: "Arcada", professional: "Dra. Amanda", notes: "Manutenção periodontal." },
     ],
     treatments: [
-      { name: "Manutenção periodontal", stage: "Realizada", status: "Concluído", startedAt: "2026-04-02", professional: "Dra. Priscila" },
+      { name: "Manutenção periodontal", stage: "Realizada", status: "Concluído", startedAt: "2026-04-02", professional: "Dra. Amanda" },
     ],
     quotes: [
       { id: "ORC-077", date: "2026-04-02", title: "Raspagem + profilaxia", value: 480, status: "Aprovado" },
@@ -630,29 +916,29 @@ export const initialPatients: Patient[] = [
     treatment: "Clareamento",
     stage: "Sessão 2",
     funnelStage: "Aguardando aprovação",
-    responsible: "Dra. Priscila",
+    responsible: "Dra. Amanda",
     status: "Em tratamento",
     value: 1400,
     paid: 700,
     lastVisit: "2026-10-05",
     nextAction: "Confirmar sessão 3",
     history: [
-      { date: "2026-09-20", procedure: "Sessão 1 de clareamento", professional: "Dra. Priscila", notes: "Início do protocolo. Sem queixas." },
-      { date: "2026-10-05", procedure: "Sessão 2 de clareamento", professional: "Dra. Priscila", notes: "Sensibilidade leve." },
+      { date: "2026-09-20", procedure: "Sessão 1 de clareamento", professional: "Dra. Amanda", notes: "Início do protocolo. Sem queixas." },
+      { date: "2026-10-05", procedure: "Sessão 2 de clareamento", professional: "Dra. Amanda", notes: "Sensibilidade leve." },
     ],
     upcoming: [
-      { date: "2026-10-19", time: "10:00", procedure: "Sessão 3 de clareamento", professional: "Dra. Priscila", status: "Confirmado" },
+      { date: "2026-10-19", time: "10:00", procedure: "Sessão 3 de clareamento", professional: "Dra. Amanda", status: "Confirmado" },
     ],
     consultations: [
-      { date: "2026-09-20", time: "09:30", procedure: "Clareamento", professional: "Dra. Priscila", status: "Concluído" },
-      { date: "2026-10-05", time: "10:00", procedure: "Clareamento", professional: "Dra. Priscila", status: "Concluído" },
+      { date: "2026-09-20", time: "09:30", procedure: "Clareamento", professional: "Dra. Amanda", status: "Concluído" },
+      { date: "2026-10-05", time: "10:00", procedure: "Clareamento", professional: "Dra. Amanda", status: "Concluído" },
     ],
     procedures: [
-      { date: "2026-09-20", name: "Clareamento em consultório", tooth: "Arcada", professional: "Dra. Priscila", notes: "Gel 35%." },
-      { date: "2026-10-05", name: "Clareamento em consultório", tooth: "Arcada", professional: "Dra. Priscila", notes: "Dessensibilizante aplicado." },
+      { date: "2026-09-20", name: "Clareamento em consultório", tooth: "Arcada", professional: "Dra. Amanda", notes: "Gel 35%." },
+      { date: "2026-10-05", name: "Clareamento em consultório", tooth: "Arcada", professional: "Dra. Amanda", notes: "Dessensibilizante aplicado." },
     ],
     treatments: [
-      { name: "Clareamento", stage: "Sessão 2", status: "Em andamento", startedAt: "2026-09-20", professional: "Dra. Priscila" },
+      { name: "Clareamento", stage: "Sessão 2", status: "Em andamento", startedAt: "2026-09-20", professional: "Dra. Amanda" },
     ],
     quotes: [
       { id: "ORC-099", date: "2026-09-10", title: "Clareamento 3 sessões", value: 1400, status: "Aprovado" },
@@ -748,27 +1034,27 @@ export const initialPatients: Patient[] = [
     treatment: "Avaliação",
     stage: "Triagem",
     funnelStage: "Avaliação",
-    responsible: "Dra. Priscila",
+    responsible: "Dra. Amanda",
     status: "Ativo",
     value: 280,
     paid: 280,
     lastVisit: "2026-10-10",
     nextAction: "Selantes nos molares",
     history: [
-      { date: "2026-10-10", procedure: "Avaliação infantil", professional: "Dra. Priscila", notes: "Dentição mista. Higiene regular." },
+      { date: "2026-10-10", procedure: "Avaliação infantil", professional: "Dra. Amanda", notes: "Dentição mista. Higiene regular." },
     ],
     upcoming: [
-      { date: "2026-11-05", time: "15:00", procedure: "Selantes", professional: "Dra. Priscila", status: "Agendado" },
+      { date: "2026-11-05", time: "15:00", procedure: "Selantes", professional: "Dra. Amanda", status: "Agendado" },
     ],
     consultations: [
-      { date: "2026-10-10", time: "15:00", procedure: "Avaliação infantil", professional: "Dra. Priscila", status: "Concluído" },
+      { date: "2026-10-10", time: "15:00", procedure: "Avaliação infantil", professional: "Dra. Amanda", status: "Concluído" },
     ],
     procedures: [
-      { date: "2026-10-10", name: "Exame clínico infantil", tooth: "Arcada", professional: "Dra. Priscila", notes: "Sem cárie ativa." },
+      { date: "2026-10-10", name: "Exame clínico infantil", tooth: "Arcada", professional: "Dra. Amanda", notes: "Sem cárie ativa." },
     ],
     treatments: [
-      { name: "Odontopediatria", stage: "Triagem", status: "Em andamento", startedAt: "2026-10-10", professional: "Dra. Priscila" },
-      { name: "Selantes", stage: "Agendada", status: "Pendente", startedAt: "2026-10-10", professional: "Dra. Priscila" },
+      { name: "Odontopediatria", stage: "Triagem", status: "Em andamento", startedAt: "2026-10-10", professional: "Dra. Amanda" },
+      { name: "Selantes", stage: "Agendada", status: "Pendente", startedAt: "2026-10-10", professional: "Dra. Amanda" },
     ],
     quotes: [
       { id: "ORC-112", date: "2026-10-10", title: "Selantes oclusais (4 molares)", value: 480, status: "Pendente" },
@@ -854,24 +1140,24 @@ export const initialPatients: Patient[] = [
     treatment: "Avaliação",
     stage: "Concluída",
     funnelStage: "Aguardando aprovação",
-    responsible: "Dra. Priscila",
+    responsible: "Dra. Amanda",
     status: "Inativo",
     value: 7800,
     paid: 0,
     lastVisit: "2026-05-18",
     nextAction: "Reativar contato",
     history: [
-      { date: "2026-05-18", procedure: "Avaliação de lentes", professional: "Dra. Priscila", notes: "Deseja 8 lentes. Pediu prazo para decidir." },
+      { date: "2026-05-18", procedure: "Avaliação de lentes", professional: "Dra. Amanda", notes: "Deseja 8 lentes. Pediu prazo para decidir." },
     ],
     upcoming: [],
     consultations: [
-      { date: "2026-05-18", time: "17:00", procedure: "Avaliação estética", professional: "Dra. Priscila", status: "Concluído" },
+      { date: "2026-05-18", time: "17:00", procedure: "Avaliação estética", professional: "Dra. Amanda", status: "Concluído" },
     ],
     procedures: [
-      { date: "2026-05-18", name: "Ensaio digital do sorriso", tooth: "11-22", professional: "Dra. Priscila", notes: "Mock-up apresentado." },
+      { date: "2026-05-18", name: "Ensaio digital do sorriso", tooth: "11-22", professional: "Dra. Amanda", notes: "Mock-up apresentado." },
     ],
     treatments: [
-      { name: "Lentes de contato", stage: "Orçamento", status: "Pausado", startedAt: "2026-05-18", professional: "Dra. Priscila" },
+      { name: "Lentes de contato", stage: "Orçamento", status: "Pausado", startedAt: "2026-05-18", professional: "Dra. Amanda" },
     ],
     quotes: [
       { id: "ORC-033", date: "2026-05-18", title: "8 lentes em dissilicato", value: 7800, status: "Expirado" },
@@ -915,7 +1201,7 @@ export const initialPatients: Patient[] = [
       { date: "2026-10-08", procedure: "Obturação", professional: "Dr. Rafael", notes: "Canal finalizado. Restauração provisória." },
     ],
     upcoming: [
-      { date: "2026-10-29", time: "16:00", procedure: "Restauração definitiva", professional: "Dra. Priscila", status: "Agendado" },
+      { date: "2026-10-29", time: "16:00", procedure: "Restauração definitiva", professional: "Dra. Amanda", status: "Agendado" },
     ],
     consultations: [
       { date: "2026-09-22", time: "19:00", procedure: "Urgência", professional: "Dr. Rafael", status: "Concluído" },
@@ -927,7 +1213,7 @@ export const initialPatients: Patient[] = [
     ],
     treatments: [
       { name: "Endodontia 15", stage: "Acompanhamento", status: "Em andamento", startedAt: "2026-09-22", professional: "Dr. Rafael" },
-      { name: "Restauração definitiva", stage: "Agendada", status: "Pendente", startedAt: "2026-10-08", professional: "Dra. Priscila" },
+      { name: "Restauração definitiva", stage: "Agendada", status: "Pendente", startedAt: "2026-10-08", professional: "Dra. Amanda" },
     ],
     quotes: [
       { id: "ORC-110", date: "2026-09-22", title: "Canal + restauração 15", value: 1950, status: "Aprovado" },

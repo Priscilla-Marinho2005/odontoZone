@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import type { IconType } from "react-icons";
 import {
-  LuLayoutDashboard, LuUsers, LuFilter, LuCalendarDays, LuStethoscope, LuFileText, LuGraduationCap, LuRefreshCw,
+  LuLayoutDashboard, LuUsers, LuFilter, LuCalendarDays, LuStethoscope, LuFileText, LuGraduationCap, LuRefreshCw, LuCalendarClock, LuSmile,
   LuSettings, LuHeadphones, LuLogOut, LuChevronsLeft, LuChevronsRight, LuMenu, LuX,
 } from "react-icons/lu";
 
@@ -21,6 +21,8 @@ const menuItems: NavItem[] = [
   { id: "orcamentos", label: "Orçamentos", icon: LuFileText },
   { id: "treinamento", label: "Treinamento", icon: LuGraduationCap },
   { id: "reativacao", label: "Reativação", icon: LuRefreshCw },
+  { id: "acompanhamentos", label: "Acompanhamentos", icon: LuCalendarClock },
+  { id: "odontograma", label: "Odontograma", icon: LuSmile },
 ];
 
 const footerItems: NavItem[] = [

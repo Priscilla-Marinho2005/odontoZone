@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useMemo, useState } from "react";
+﻿import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import type { Dispatch, ReactNode, SetStateAction } from "react";
 import {
   LuArrowLeft, LuCheck, LuDownload, LuEllipsis, LuEye, LuPencil, LuPlus, LuSearch, LuSlidersHorizontal, LuX,
@@ -13,6 +13,9 @@ import {
   initialPatients,
   initialTasks,
   origins,
+  seedMaintenances,
+  enrichPatientHistory,
+  hydrateQuotes,
   syncAgendaLinks,
   visitsOf,
   responsibles,
@@ -23,6 +26,7 @@ import {
 import type {
   Address,
   ClinicTask,
+  ClinicUser,
   FunnelStage,
   Guardian,
   Interaction,
@@ -33,8 +37,13 @@ import type {
   TagDef,
   Treatment,
 } from "../data/clinicPatients";
+import { clinicUsers } from "../data/clinicPatients";
 import { ensurePlanForTreatment, seedPlans } from "../data/treatmentPlan";
+import { seedOdontogram } from "../data/odontogram";
+import { seedClinicalCharts } from "../data/clinicalRecord";
 import PatientPlans from "./PatientPlans";
+import { OdontogramaChart } from "../components/OdontogramaChart";
+import { ClinicalRecord } from "../components/ClinicalRecord";
 
 export { funnelStages };
 export type { FunnelStage };
@@ -87,15 +96,18 @@ type ClinicContextValue = {
   setTags: Dispatch<SetStateAction<TagDef[]>>;
   tasks: ClinicTask[];
   setTasks: Dispatch<SetStateAction<ClinicTask[]>>;
+  currentUser: ClinicUser;
+  setCurrentUser: Dispatch<SetStateAction<ClinicUser>>;
 };
 
 const ClinicContext = createContext<ClinicContextValue | null>(null);
 
 export function PatientsProvider({ children }: { children: ReactNode }) {
-  const [patients, setPatients] = useState<Patient[]>(() => seedPlans(initialPatients).map(syncAgendaLinks));
+  const [patients, setPatients] = useState<Patient[]>(() => seedClinicalCharts(seedOdontogram(hydrateQuotes(seedMaintenances(seedPlans(enrichPatientHistory(initialPatients))).map(syncAgendaLinks)))));
   const [tags, setTags] = useState<TagDef[]>(defaultTagCatalog);
   const [tasks, setTasks] = useState<ClinicTask[]>(initialTasks);
-  return <ClinicContext.Provider value={{ patients, setPatients, tags, setTags, tasks, setTasks }}>{children}</ClinicContext.Provider>;
+  const [currentUser, setCurrentUser] = useState<ClinicUser>("Dra. Amanda");
+  return <ClinicContext.Provider value={{ patients, setPatients, tags, setTags, tasks, setTasks, currentUser, setCurrentUser }}>{children}</ClinicContext.Provider>;
 }
 
 export function usePatients() {
@@ -292,7 +304,7 @@ function emptyDraft(protocol: string): Draft {
     mode: "create",
     protocol,
     name: "",
-    photo: "https://randomuser.me/api/portraits/lego/1.jpg",
+    photo: `https://randomuser.me/api/portraits/${Number(protocol.slice(-2)) % 2 === 0 ? "women" : "men"}/${(Number(protocol.replace(/\D/g, "")) % 90) + 1}.jpg`,
     cpf: "",
     phone: "",
     whatsapp: "",
@@ -306,7 +318,7 @@ function emptyDraft(protocol: string): Draft {
     notes: "",
     treatment,
     stage: stagesByTreatment[treatment][0],
-    responsible: "Dra. Priscila",
+    responsible: "Dra. Amanda",
     status: "Ativo",
     value: "",
     paid: "",
@@ -471,6 +483,10 @@ function PatientForm({
     document.getElementById("paciente-nome")?.focus();
   }, []);
 
+  useEffect(() => {
+    if (suggestGuardian && !draft.hasGuardian) set({ hasGuardian: true });
+  }, [suggestGuardian]);
+
   const set = (patch: Partial<Draft>) => onChange({ ...draft, ...patch });
 
   function toggleTag(id: string) {
@@ -525,21 +541,34 @@ function PatientForm({
         <div className="mt-5 grid gap-4 sm:grid-cols-2">
           <div className="flex items-center gap-3 sm:col-span-2">
             <img src={draft.photo} alt="" className="size-16 rounded-full object-cover ring-1 ring-line" />
-            <label className="text-[13px] font-medium text-teal">
-              Alterar foto
-              <input
-                type="file"
-                accept="image/*"
-                className="sr-only"
-                onChange={(event) => {
-                  const file = event.target.files?.[0];
-                  if (!file) return;
-                  const reader = new FileReader();
-                  reader.onload = () => set({ photo: String(reader.result) });
-                  reader.readAsDataURL(file);
+            <div className="flex flex-col gap-1">
+              <label className="text-[13px] font-medium text-teal">
+                Alterar foto
+                <input
+                  type="file"
+                  accept="image/*"
+                  className="sr-only"
+                  onChange={(event) => {
+                    const file = event.target.files?.[0];
+                    if (!file) return;
+                    const reader = new FileReader();
+                    reader.onload = () => set({ photo: String(reader.result) });
+                    reader.readAsDataURL(file);
+                  }}
+                />
+              </label>
+              <button
+                type="button"
+                className="text-left text-[12px] text-muted hover:text-teal"
+                onClick={() => {
+                  const n = Math.floor(Math.random() * 90) + 1;
+                  const gender = Math.random() > 0.5 ? "women" : "men";
+                  set({ photo: `https://randomuser.me/api/portraits/${gender}/${n}.jpg` });
                 }}
-              />
-            </label>
+              >
+                Usar foto fictícia
+              </button>
+            </div>
           </div>
           <div className="sm:col-span-2">
             <TextField id="paciente-nome" label="Nome" value={draft.name} onChange={(name) => set({ name })} error={errors.name} required />
@@ -690,8 +719,7 @@ function PatientForm({
 }
 
 const recordTabs = [
-  "Resumo", "Histórico", "Consultas", "Procedimentos", "Tratamentos",
-  "Orçamentos", "Pagamentos", "Mensagens", "Faltas", "Retornos", "Tarefas", "Anotações",
+  "Resumo", "Prontuário", "Atendimentos", "Tratamentos", "Financeiro", "Comunicação",
 ] as const;
 type RecordTab = (typeof recordTabs)[number];
 
@@ -797,6 +825,7 @@ function RecordView({
   const chat = whatsappHref(patient.whatsapp || patient.phone);
   const patientTags = tags.filter((tag) => patient.tagIds.includes(tag.id));
   const age = ageFromBirth(patient.birthDate);
+  const { currentUser, setCurrentUser } = usePatients();
 
   const timeline = [
     ...(nextVisit
@@ -817,7 +846,7 @@ function RecordView({
     if (!title) return;
     setTasks((current) => [title, ...current]);
     setTaskDraft("");
-    setTab("Tarefas");
+    setTab("Comunicação");
   }
 
   function addNote() {
@@ -872,7 +901,13 @@ function RecordView({
               <FaWhatsapp size={15} /> WhatsApp
             </span>
           )}
-          <button type="button" onClick={() => setTab("Tarefas")} className="inline-flex items-center gap-2 rounded-lg bg-teal px-4 py-2.5 text-[13px] font-medium text-white hover:bg-navy">
+          <label className="inline-flex items-center gap-2 rounded-lg border border-line bg-white px-3 py-2 text-[12px] text-muted">
+            Acesso
+            <select value={currentUser} onChange={(event) => setCurrentUser(event.target.value as ClinicUser)} className="bg-transparent text-[13px] text-ink outline-none">
+              {clinicUsers.map((item) => <option key={item}>{item}</option>)}
+            </select>
+          </label>
+          <button type="button" onClick={() => setTab("Comunicação")} className="inline-flex items-center gap-2 rounded-lg bg-teal px-4 py-2.5 text-[13px] font-medium text-white hover:bg-navy">
             <LuPlus size={15} /> Nova tarefa
           </button>
         </div>
@@ -973,83 +1008,236 @@ function RecordView({
                 <span>{formatMoney(pending)} pendente</span>
               </div>
             </section>
+
+            <section className="rounded-xl border border-line bg-white px-5 py-4">
+              <h2 className="text-[15px] font-semibold">Cadastro</h2>
+              <div className="mt-3 grid gap-3">
+                <Info label="CPF" value={patient.cpf} />
+                <Info label="Origem" value={patient.origin} />
+                <Info label="Endereço" value={formatAddress(patient.address)} />
+                {patient.hasGuardian && patient.guardian && (
+                  <Info label="Responsável legal" value={`${patient.guardian.name} (${patient.guardian.kinship})`} />
+                )}
+              </div>
+              {patient.notes && <p className="mt-3 text-[13px] text-muted">{patient.notes}</p>}
+            </section>
           </div>
         </div>
       )}
 
-      {tab === "Histórico" && (
-        <section className="mt-5 rounded-xl border border-line bg-white px-5 py-4">
-          <h2 className="text-[15px] font-semibold">Histórico completo</h2>
-          <div className="mt-4 grid gap-4 sm:grid-cols-3">
-            <Info label="CPF" value={patient.cpf} />
-            <Info label="Origem" value={patient.origin} />
-            <Info label="Endereço" value={formatAddress(patient.address)} />
-            {patient.hasGuardian && patient.guardian && (
-              <Info label="Responsável legal" value={`${patient.guardian.name} (${patient.guardian.kinship})`} />
+      {tab === "Prontuário" && (
+        <div className="mt-5 space-y-5">
+          <ClinicalRecord patient={patient} currentUser={currentUser} onChange={onChange} />
+          <OdontogramaChart patient={patient} onChange={onChange} />
+        </div>
+      )}
+
+      {tab === "Atendimentos" && (
+        <div className="mt-5 grid gap-4">
+          <section className="rounded-xl border border-line bg-white px-5 py-4">
+            <h2 className="text-[15px] font-semibold">Consultas</h2>
+            {patient.consultations.length === 0 ? (
+              <p className="mt-3 text-[13px] text-muted">Nenhuma consulta registrada.</p>
+            ) : (
+              <ul className="mt-4 space-y-3">
+                {patient.consultations.map((item) => (
+                  <li key={`${item.date}-${item.time}-${item.procedure}`} className="rounded-lg border border-line px-4 py-3">
+                    <p className="text-[13px] font-semibold">{item.procedure}</p>
+                    <p className="mt-1 text-[12px] text-muted">
+                      {formatDate(item.date)} · {item.time} · {item.professional}
+                      {item.status ? ` · ${item.status}` : ""}
+                    </p>
+                  </li>
+                ))}
+              </ul>
             )}
-          </div>
-          {patient.history.length === 0 ? (
-            <p className="mt-3 text-[13px] text-muted">Nenhum atendimento registrado.</p>
-          ) : (
-            <ul className="mt-4 space-y-3">
-              {patient.history.map((item) => (
-                <li key={`${item.date}-${item.procedure}`} className="rounded-lg border border-line px-4 py-3">
-                  <p className="text-[13px] font-semibold">{item.procedure}</p>
-                  <p className="mt-1 text-[12px] text-muted">{formatDate(item.date)} · {item.professional}</p>
-                  {item.notes && <p className="mt-2 text-[13px]">{item.notes}</p>}
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
-      )}
-
-      {tab === "Consultas" && (
-        <section className="mt-5 rounded-xl border border-line bg-white px-5 py-4">
-          <h2 className="text-[15px] font-semibold">Consultas anteriores</h2>
-          {patient.consultations.length === 0 ? (
-            <p className="mt-3 text-[13px] text-muted">Nenhuma consulta registrada.</p>
-          ) : (
-            <ul className="mt-4 space-y-3">
-              {patient.consultations.map((item) => (
-                <li key={`${item.date}-${item.time}-${item.procedure}`} className="rounded-lg border border-line px-4 py-3">
-                  <p className="text-[13px] font-semibold">{item.procedure}</p>
-                  <p className="mt-1 text-[12px] text-muted">
-                    {formatDate(item.date)} · {item.time} · {item.professional}
-                    {item.status ? ` · ${item.status}` : ""}
-                  </p>
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
-      )}
-
-      {tab === "Procedimentos" && (
-        <section className="mt-5 rounded-xl border border-line bg-white px-5 py-4">
-          <h2 className="text-[15px] font-semibold">Procedimentos realizados</h2>
-          {patient.procedures.length === 0 ? (
-            <p className="mt-3 text-[13px] text-muted">Nenhum procedimento registrado.</p>
-          ) : (
-            <ul className="mt-4 space-y-3">
-              {patient.procedures.map((item) => (
-                <li key={`${item.date}-${item.name}`} className="rounded-lg border border-line px-4 py-3">
-                  <p className="text-[13px] font-semibold">{item.name}</p>
-                  <p className="mt-1 text-[12px] text-muted">{formatDate(item.date)} · Dente {item.tooth} · {item.professional}</p>
-                  {item.notes && <p className="mt-2 text-[13px]">{item.notes}</p>}
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
+          </section>
+          <section className="rounded-xl border border-line bg-white px-5 py-4">
+            <h2 className="text-[15px] font-semibold">Procedimentos</h2>
+            {patient.procedures.length === 0 ? (
+              <p className="mt-3 text-[13px] text-muted">Nenhum procedimento registrado.</p>
+            ) : (
+              <ul className="mt-4 space-y-3">
+                {patient.procedures.map((item) => (
+                  <li key={`${item.date}-${item.name}`} className="rounded-lg border border-line px-4 py-3">
+                    <p className="text-[13px] font-semibold">{item.name}</p>
+                    <p className="mt-1 text-[12px] text-muted">{formatDate(item.date)} · Dente {item.tooth} · {item.professional}</p>
+                    {item.notes && <p className="mt-2 text-[13px]">{item.notes}</p>}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+          <section className="rounded-xl border border-line bg-white px-5 py-4">
+            <h2 className="text-[15px] font-semibold">Histórico clínico</h2>
+            {patient.history.length === 0 ? (
+              <p className="mt-3 text-[13px] text-muted">Nenhum atendimento registrado.</p>
+            ) : (
+              <ul className="mt-4 space-y-3">
+                {patient.history.map((item) => (
+                  <li key={`${item.date}-${item.procedure}`} className="rounded-lg border border-line px-4 py-3">
+                    <p className="text-[13px] font-semibold">{item.procedure}</p>
+                    <p className="mt-1 text-[12px] text-muted">{formatDate(item.date)} · {item.professional}</p>
+                    {item.notes && <p className="mt-2 text-[13px]">{item.notes}</p>}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+          <section className="rounded-xl border border-line bg-white px-5 py-4">
+            <h2 className="text-[15px] font-semibold">Faltas e cancelamentos</h2>
+            <p className="mt-1 text-[12px] text-muted">Vinculados à agenda. Mudar o status na Agenda atualiza esta lista.</p>
+            <form
+              className="mt-4 grid gap-3 rounded-lg border border-line px-4 py-3 sm:grid-cols-2"
+              onSubmit={(event) => {
+                event.preventDefault();
+                const procedure = absenceProcedure.trim();
+                if (!procedure) return;
+                const visit = {
+                  date: absenceDate,
+                  time: absenceTime,
+                  procedure,
+                  professional: patient.responsible,
+                  status: absenceType === "Falta" ? "Falta" as const : "Cancelado" as const,
+                  notes: absenceReason.trim(),
+                };
+                onChange({
+                  ...patient,
+                  consultations: [visit, ...patient.consultations],
+                  absences: [{
+                    date: absenceDate,
+                    type: absenceType,
+                    procedure,
+                    reason: absenceReason.trim() || "Registrado no prontuário",
+                  }, ...patient.absences],
+                });
+                setAbsenceProcedure("");
+                setAbsenceReason("");
+              }}
+            >
+              <label className="block text-[11px] font-medium text-muted">
+                Data
+                <input type="date" value={absenceDate} onChange={(event) => setAbsenceDate(event.target.value)} className="mt-1 w-full rounded-md border border-line px-3 py-2 text-[13px] outline-none focus:border-teal" />
+              </label>
+              <label className="block text-[11px] font-medium text-muted">
+                Horário
+                <input type="time" value={absenceTime} onChange={(event) => setAbsenceTime(event.target.value)} className="mt-1 w-full rounded-md border border-line px-3 py-2 text-[13px] outline-none focus:border-teal" />
+              </label>
+              <label className="block text-[11px] font-medium text-muted">
+                Tipo
+                <select value={absenceType} onChange={(event) => setAbsenceType(event.target.value as "Falta" | "Cancelamento")} className="mt-1 w-full rounded-md border border-line px-3 py-2 text-[13px] outline-none focus:border-teal">
+                  <option value="Cancelamento">Cancelamento</option>
+                  <option value="Falta">Falta</option>
+                </select>
+              </label>
+              <label className="block text-[11px] font-medium text-muted">
+                Procedimento
+                <input value={absenceProcedure} onChange={(event) => setAbsenceProcedure(event.target.value)} className="mt-1 w-full rounded-md border border-line px-3 py-2 text-[13px] outline-none focus:border-teal" />
+              </label>
+              <label className="block text-[11px] font-medium text-muted sm:col-span-2">
+                Motivo
+                <input value={absenceReason} onChange={(event) => setAbsenceReason(event.target.value)} className="mt-1 w-full rounded-md border border-line px-3 py-2 text-[13px] outline-none focus:border-teal" />
+              </label>
+              <div className="sm:col-span-2 flex justify-end">
+                <button type="submit" className="inline-flex items-center gap-1.5 rounded-md bg-teal px-4 py-2 text-[13px] font-medium text-white hover:bg-navy">
+                  <LuPlus size={14} /> Registrar na agenda
+                </button>
+              </div>
+            </form>
+            {agendaAbsences(patient).length === 0 ? (
+              <p className="mt-3 text-[13px] text-muted">Nenhuma falta ou cancelamento na agenda.</p>
+            ) : (
+              <ul className="mt-4 space-y-3">
+                {agendaAbsences(patient).map((item) => (
+                  <li key={`${item.date}-${item.time}-${item.procedure}`} className="rounded-lg border border-line px-4 py-3">
+                    <p className="text-[13px] font-semibold">{item.type} · {item.procedure}</p>
+                    <p className="mt-1 text-[12px] text-muted">{formatDate(item.date)} · {item.time} · {item.professional}</p>
+                    {item.reason && <p className="mt-2 text-[13px]">{item.reason}</p>}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+          <section className="rounded-xl border border-line bg-white px-5 py-4">
+            <h2 className="text-[15px] font-semibold">Retornos e manutenções</h2>
+            <p className="mt-1 text-[12px] text-muted">Vinculados à agenda.</p>
+            <form
+              className="mt-4 grid gap-3 rounded-lg border border-line px-4 py-3 sm:grid-cols-2"
+              onSubmit={(event) => {
+                event.preventDefault();
+                const procedure = returnProcedure.trim() || returnType;
+                const visit = {
+                  date: returnDate,
+                  time: returnTime,
+                  procedure,
+                  professional: patient.responsible,
+                  status: "Retorno" as const,
+                  notes: returnType,
+                };
+                onChange({
+                  ...patient,
+                  upcoming: [visit, ...patient.upcoming],
+                  followUps: [{
+                    date: returnDate,
+                    type: returnType,
+                    procedure,
+                    status: "Agendado",
+                  }, ...patient.followUps],
+                });
+                setReturnProcedure("");
+              }}
+            >
+              <label className="block text-[11px] font-medium text-muted">
+                Data
+                <input type="date" value={returnDate} onChange={(event) => setReturnDate(event.target.value)} className="mt-1 w-full rounded-md border border-line px-3 py-2 text-[13px] outline-none focus:border-teal" />
+              </label>
+              <label className="block text-[11px] font-medium text-muted">
+                Horário
+                <input type="time" value={returnTime} onChange={(event) => setReturnTime(event.target.value)} className="mt-1 w-full rounded-md border border-line px-3 py-2 text-[13px] outline-none focus:border-teal" />
+              </label>
+              <label className="block text-[11px] font-medium text-muted">
+                Tipo
+                <select value={returnType} onChange={(event) => setReturnType(event.target.value as "Retorno" | "Manutenção")} className="mt-1 w-full rounded-md border border-line px-3 py-2 text-[13px] outline-none focus:border-teal">
+                  <option value="Retorno">Retorno</option>
+                  <option value="Manutenção">Manutenção</option>
+                </select>
+              </label>
+              <label className="block text-[11px] font-medium text-muted">
+                Procedimento
+                <input value={returnProcedure} onChange={(event) => setReturnProcedure(event.target.value)} placeholder="Ex.: Retorno da avaliação" className="mt-1 w-full rounded-md border border-line px-3 py-2 text-[13px] outline-none focus:border-teal" />
+              </label>
+              <div className="sm:col-span-2 flex justify-end">
+                <button type="submit" className="inline-flex items-center gap-1.5 rounded-md bg-teal px-4 py-2 text-[13px] font-medium text-white hover:bg-navy">
+                  <LuPlus size={14} /> Agendar retorno
+                </button>
+              </div>
+            </form>
+            {agendaFollowUps(patient).length === 0 ? (
+              <p className="mt-3 text-[13px] text-muted">Nenhum retorno ou manutenção na agenda.</p>
+            ) : (
+              <ul className="mt-4 space-y-3">
+                {agendaFollowUps(patient).map((item) => (
+                  <li key={`${item.date}-${item.time}-${item.procedure}`} className="rounded-lg border border-line px-4 py-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <p className="text-[13px] font-semibold">{item.type} · {item.procedure}</p>
+                      <span className="text-[11px] font-semibold">{item.status}</span>
+                    </div>
+                    <p className="mt-1 text-[12px] text-muted">{formatDate(item.date)} · {item.time} · {item.professional}</p>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+        </div>
       )}
 
       {tab === "Tratamentos" && (
         <PatientPlans patient={patient} onChange={onChange} />
       )}
 
-      {tab === "Orçamentos" && (
-        <section className="mt-5 rounded-xl border border-line bg-white px-5 py-4">
+      {tab === "Financeiro" && (
+        <div className="mt-5 grid gap-4">
+        <section className="rounded-xl border border-line bg-white px-5 py-4">
           <h2 className="text-[15px] font-semibold">Orçamentos</h2>
           {patient.quotes.length === 0 ? (
             <p className="mt-3 text-[13px] text-muted">Nenhum orçamento registrado.</p>
@@ -1061,16 +1249,14 @@ function RecordView({
                     <p className="text-[13px] font-semibold">{item.title}</p>
                     <span className="text-[11px] font-semibold">{item.status}</span>
                   </div>
-                  <p className="mt-1 text-[12px] text-muted">{item.id} · {formatDate(item.date)} · {formatMoney(item.value)}</p>
+                  <p className="mt-1 text-[12px] text-muted">{item.id} · {formatDate(item.date)} · {formatMoney(item.value)}{item.paymentTerms ? ` · ${item.paymentTerms}` : ""}</p>
+                  {item.viewedAt && <p className="mt-1 text-[12px] text-teal">Visualizado em {formatDate(item.viewedAt)}</p>}
                 </li>
               ))}
             </ul>
           )}
         </section>
-      )}
-
-      {tab === "Pagamentos" && (
-        <section className="mt-5 rounded-xl border border-line bg-white px-5 py-4">
+        <section className="rounded-xl border border-line bg-white px-5 py-4">
           <h2 className="text-[15px] font-semibold">Pagamentos</h2>
           <div className="mt-4 grid gap-4 sm:grid-cols-3">
             <Info label="Valor total" value={formatMoney(patient.value)} />
@@ -1093,10 +1279,12 @@ function RecordView({
             </ul>
           )}
         </section>
+        </div>
       )}
 
-      {tab === "Tarefas" && (
-        <section className="mt-5 rounded-xl border border-line bg-white px-5 py-4">
+      {tab === "Comunicação" && (
+        <div className="mt-5 grid gap-4">
+        <section className="rounded-xl border border-line bg-white px-5 py-4">
           <h2 className="text-[15px] font-semibold">Tarefas</h2>
           <form
             className="mt-4 flex gap-2"
@@ -1127,10 +1315,7 @@ function RecordView({
             ))}
           </ul>
         </section>
-      )}
-
-      {tab === "Mensagens" && (
-        <section className="mt-5 rounded-xl border border-line bg-white px-5 py-4">
+        <section className="rounded-xl border border-line bg-white px-5 py-4">
           <h2 className="text-[15px] font-semibold">Mensagens e interações</h2>
           <div className="mt-4 grid gap-4 sm:grid-cols-3">
             <Info label="Telefone" value={patient.phone} />
@@ -1205,164 +1390,13 @@ function RecordView({
             </ul>
           )}
         </section>
-      )}
-
-      {tab === "Faltas" && (
-        <section className="mt-5 rounded-xl border border-line bg-white px-5 py-4">
-          <h2 className="text-[15px] font-semibold">Faltas e cancelamentos</h2>
-          <p className="mt-1 text-[12px] text-muted">Vinculados à agenda. Mudar o status na Agenda atualiza esta lista.</p>
-          <form
-            className="mt-4 grid gap-3 rounded-lg border border-line px-4 py-3 sm:grid-cols-2"
-            onSubmit={(event) => {
-              event.preventDefault();
-              const procedure = absenceProcedure.trim();
-              if (!procedure) return;
-              const visit = {
-                date: absenceDate,
-                time: absenceTime,
-                procedure,
-                professional: patient.responsible,
-                status: absenceType === "Falta" ? "Falta" as const : "Cancelado" as const,
-                notes: absenceReason.trim(),
-              };
-              onChange({
-                ...patient,
-                consultations: [visit, ...patient.consultations],
-                absences: [{
-                  date: absenceDate,
-                  type: absenceType,
-                  procedure,
-                  reason: absenceReason.trim() || "Registrado no prontuário",
-                }, ...patient.absences],
-              });
-              setAbsenceProcedure("");
-              setAbsenceReason("");
-            }}
-          >
-            <label className="block text-[11px] font-medium text-muted">
-              Data
-              <input type="date" value={absenceDate} onChange={(event) => setAbsenceDate(event.target.value)} className="mt-1 w-full rounded-md border border-line px-3 py-2 text-[13px] outline-none focus:border-teal" />
-            </label>
-            <label className="block text-[11px] font-medium text-muted">
-              Horário
-              <input type="time" value={absenceTime} onChange={(event) => setAbsenceTime(event.target.value)} className="mt-1 w-full rounded-md border border-line px-3 py-2 text-[13px] outline-none focus:border-teal" />
-            </label>
-            <label className="block text-[11px] font-medium text-muted">
-              Tipo
-              <select value={absenceType} onChange={(event) => setAbsenceType(event.target.value as "Falta" | "Cancelamento")} className="mt-1 w-full rounded-md border border-line px-3 py-2 text-[13px] outline-none focus:border-teal">
-                <option value="Cancelamento">Cancelamento</option>
-                <option value="Falta">Falta</option>
-              </select>
-            </label>
-            <label className="block text-[11px] font-medium text-muted">
-              Procedimento
-              <input value={absenceProcedure} onChange={(event) => setAbsenceProcedure(event.target.value)} className="mt-1 w-full rounded-md border border-line px-3 py-2 text-[13px] outline-none focus:border-teal" />
-            </label>
-            <label className="block text-[11px] font-medium text-muted sm:col-span-2">
-              Motivo
-              <input value={absenceReason} onChange={(event) => setAbsenceReason(event.target.value)} className="mt-1 w-full rounded-md border border-line px-3 py-2 text-[13px] outline-none focus:border-teal" />
-            </label>
-            <div className="sm:col-span-2 flex justify-end">
-              <button type="submit" className="inline-flex items-center gap-1.5 rounded-md bg-teal px-4 py-2 text-[13px] font-medium text-white hover:bg-navy">
-                <LuPlus size={14} /> Registrar na agenda
-              </button>
-            </div>
-          </form>
-          {agendaAbsences(patient).length === 0 ? (
-            <p className="mt-3 text-[13px] text-muted">Nenhuma falta ou cancelamento na agenda.</p>
-          ) : (
-            <ul className="mt-4 space-y-3">
-              {agendaAbsences(patient).map((item) => (
-                <li key={`${item.date}-${item.time}-${item.procedure}`} className="rounded-lg border border-line px-4 py-3">
-                  <p className="text-[13px] font-semibold">{item.type} · {item.procedure}</p>
-                  <p className="mt-1 text-[12px] text-muted">{formatDate(item.date)} · {item.time} · {item.professional}</p>
-                  {item.reason && <p className="mt-2 text-[13px]">{item.reason}</p>}
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
-      )}
-
-      {tab === "Retornos" && (
-        <section className="mt-5 rounded-xl border border-line bg-white px-5 py-4">
-          <h2 className="text-[15px] font-semibold">Retornos e manutenções</h2>
-          <p className="mt-1 text-[12px] text-muted">Vinculados à agenda. Compromissos com status Retorno ou manutenção aparecem aqui.</p>
-          <form
-            className="mt-4 grid gap-3 rounded-lg border border-line px-4 py-3 sm:grid-cols-2"
-            onSubmit={(event) => {
-              event.preventDefault();
-              const procedure = returnProcedure.trim() || returnType;
-              const visit = {
-                date: returnDate,
-                time: returnTime,
-                procedure,
-                professional: patient.responsible,
-                status: "Retorno" as const,
-                notes: returnType,
-              };
-              onChange({
-                ...patient,
-                upcoming: [visit, ...patient.upcoming],
-                followUps: [{
-                  date: returnDate,
-                  type: returnType,
-                  procedure,
-                  status: "Agendado",
-                }, ...patient.followUps],
-              });
-              setReturnProcedure("");
-            }}
-          >
-            <label className="block text-[11px] font-medium text-muted">
-              Data
-              <input type="date" value={returnDate} onChange={(event) => setReturnDate(event.target.value)} className="mt-1 w-full rounded-md border border-line px-3 py-2 text-[13px] outline-none focus:border-teal" />
-            </label>
-            <label className="block text-[11px] font-medium text-muted">
-              Horário
-              <input type="time" value={returnTime} onChange={(event) => setReturnTime(event.target.value)} className="mt-1 w-full rounded-md border border-line px-3 py-2 text-[13px] outline-none focus:border-teal" />
-            </label>
-            <label className="block text-[11px] font-medium text-muted">
-              Tipo
-              <select value={returnType} onChange={(event) => setReturnType(event.target.value as "Retorno" | "Manutenção")} className="mt-1 w-full rounded-md border border-line px-3 py-2 text-[13px] outline-none focus:border-teal">
-                <option value="Retorno">Retorno</option>
-                <option value="Manutenção">Manutenção</option>
-              </select>
-            </label>
-            <label className="block text-[11px] font-medium text-muted">
-              Procedimento
-              <input value={returnProcedure} onChange={(event) => setReturnProcedure(event.target.value)} placeholder="Ex.: Retorno da avaliação" className="mt-1 w-full rounded-md border border-line px-3 py-2 text-[13px] outline-none focus:border-teal" />
-            </label>
-            <div className="sm:col-span-2 flex justify-end">
-              <button type="submit" className="inline-flex items-center gap-1.5 rounded-md bg-teal px-4 py-2 text-[13px] font-medium text-white hover:bg-navy">
-                <LuPlus size={14} /> Agendar retorno
-              </button>
-            </div>
-          </form>
-          {agendaFollowUps(patient).length === 0 ? (
-            <p className="mt-3 text-[13px] text-muted">Nenhum retorno ou manutenção na agenda.</p>
-          ) : (
-            <ul className="mt-4 space-y-3">
-              {agendaFollowUps(patient).map((item) => (
-                <li key={`${item.date}-${item.time}-${item.procedure}`} className="rounded-lg border border-line px-4 py-3">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <p className="text-[13px] font-semibold">{item.type} · {item.procedure}</p>
-                    <span className="text-[11px] font-semibold">{item.status}</span>
-                  </div>
-                  <p className="mt-1 text-[12px] text-muted">{formatDate(item.date)} · {item.time} · {item.professional}</p>
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
-      )}
-
-      {tab === "Anotações" && (
-        <section className="mt-5 rounded-xl border border-line bg-white px-5 py-4">
+        <section className="rounded-xl border border-line bg-white px-5 py-4">
           <h2 className="text-[15px] font-semibold">Observações internas</h2>
           <p className="mt-3 text-[13px]">{patient.notes || "Nenhuma anotação."}</p>
         </section>
+        </div>
       )}
+
     </div>
   );
 }
@@ -1431,7 +1465,17 @@ export default function Pacientes({
   const [tagFilter, setTagFilter] = useState("");
   const [funnelFilter, setFunnelFilter] = useState<(typeof patientFunnelFilters)[number]>("Todos");
   const [segment, setSegment] = useState<ManagementSegment>("Todos");
-  const [customSegments, setCustomSegments] = useState<{ id: string; name: string }[]>([]);
+  const [customSegments, setCustomSegments] = useState<{
+    id: string;
+    name: string;
+    treatmentFilter: string;
+    stageFilter: string;
+    responsibleFilter: string;
+    statusFilter: string;
+    originFilter: string;
+    tagFilter: string;
+    segment: ManagementSegment;
+  }[]>([]);
   const [customSegment, setCustomSegment] = useState("");
   const [segmentName, setSegmentName] = useState("");
   const [menu, setMenu] = useState<MenuState | null>(null);
@@ -1612,6 +1656,9 @@ export default function Pacientes({
       interactions: current?.interactions ?? extras.interactions,
       absences: current?.absences ?? extras.absences,
       followUps: current?.followUps ?? extras.followUps,
+      maintenances: current?.maintenances ?? extras.maintenances,
+      odontogram: current?.odontogram ?? extras.odontogram,
+      chart: current?.chart ?? extras.chart,
     };
 
     const withPlan = current?.treatment !== saved.treatment
@@ -1760,7 +1807,17 @@ export default function Pacientes({
                   onClick={() => {
                     const name = segmentName.trim();
                     if (!name) return;
-                    setCustomSegments((current) => [...current, { id: `seg-${Date.now()}`, name }]);
+                    setCustomSegments((current) => [...current, {
+                      id: `seg-${Date.now()}`,
+                      name,
+                      treatmentFilter,
+                      stageFilter,
+                      responsibleFilter,
+                      statusFilter,
+                      originFilter,
+                      tagFilter,
+                      segment,
+                    }]);
                     setCustomSegment(name);
                     setSegmentName("");
                   }}
@@ -1802,7 +1859,9 @@ export default function Pacientes({
             </div>
 
             <div className="flex flex-wrap gap-1.5 border-b border-line bg-surface px-5 py-3">
-              {managementSegments.map((item) => (
+              {managementSegments.map((item) => {
+                const count = patients.filter((patient) => matchesManagementSegment(patient, item)).length;
+                return (
                 <button
                   key={item}
                   type="button"
@@ -1814,17 +1873,23 @@ export default function Pacientes({
                     segment === item && !customSegment ? "bg-teal text-white" : "bg-white text-muted ring-1 ring-line hover:text-ink"
                   }`}
                 >
-                  {item}
+                  {item} ({count})
                 </button>
-              ))}
+                );
+              })}
               {customSegments.map((item) => (
                 <button
                   key={item.id}
                   type="button"
                   onClick={() => {
                     setCustomSegment(item.name);
-                    const tag = tags.find((entry) => entry.label.toLowerCase() === item.name.toLowerCase());
-                    if (tag) setTagFilter(tag.id);
+                    setTreatmentFilter(item.treatmentFilter);
+                    setStageFilter(item.stageFilter);
+                    setResponsibleFilter(item.responsibleFilter);
+                    setStatusFilter(item.statusFilter);
+                    setOriginFilter(item.originFilter);
+                    setTagFilter(item.tagFilter);
+                    setSegment(item.segment);
                   }}
                   className={`rounded-full px-3 py-1.5 text-[12px] font-medium ${
                     customSegment === item.name ? "bg-navy text-white" : "bg-white text-muted ring-1 ring-line hover:text-ink"

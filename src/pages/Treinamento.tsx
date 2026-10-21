@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+﻿import { useMemo, useState } from "react";
 import { LuImage, LuLink, LuMessageSquareText, LuPlus, LuTrash2, LuX } from "react-icons/lu";
 
 type Kind = "script" | "link" | "image";
@@ -27,7 +27,7 @@ const initialMaterials: Material[] = [
     kind: "script",
     title: "Primeiro contato no WhatsApp",
     category: "Primeiro contato",
-    body: "Olá, [nome]! Aqui é da Áurea Odonto.\nVi que você demonstrou interesse em [tratamento].\nPosso te ajudar a agendar uma avaliação com a Dra. Priscila?",
+    body: "Olá, [nome]! Aqui é da Áurea Odonto.\nVi que você demonstrou interesse em [tratamento].\nPosso te ajudar a agendar uma avaliação com a Dra. Amanda?",
     image: "",
   },
   {

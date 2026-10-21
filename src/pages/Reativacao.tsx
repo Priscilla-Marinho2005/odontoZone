@@ -64,8 +64,14 @@ function matchesFilter(patient: Patient, filter: RecoveryFilter) {
       || visits.some((visit) => visit.status === "Cancelado");
   }
   if (filter === "orcamento") {
-    return patient.quotes.some((item) => item.status === "Pendente" || item.status === "Recusado" || item.status === "Expirado")
-      || patient.funnelStage === "Aguardando aprovação";
+    return patient.quotes.some((item) => (
+      item.status === "Pendente"
+      || item.status === "Enviado"
+      || item.status === "Visualizado"
+      || item.status === "Em negociação"
+      || item.status === "Recusado"
+      || item.status === "Expirado"
+    )) || patient.funnelStage === "Aguardando aprovação";
   }
   return (patient.plans ?? []).some((item) => item.status === "Interrompido")
     || patient.treatments.some((item) => item.status === "Pausado");

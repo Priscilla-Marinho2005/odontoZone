@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+﻿import type { ReactNode } from "react";
 import type { IconType } from "react-icons";
 import { LuUsers, LuActivity, LuCircleDollarSign, LuMessageCircle, LuPlus } from "react-icons/lu";
 
@@ -44,13 +44,13 @@ const stats: Stat[] = [
 ];
 
 const agenda: Appointment[] = [
-  { time: "08:00", patient: "Fernanda Lima", treatment: "Limpeza", responsible: "Dra. Priscila", status: "Concluído" },
+  { time: "08:00", patient: "Fernanda Lima", treatment: "Limpeza", responsible: "Dra. Amanda", status: "Concluído" },
   { time: "09:00", patient: "Roberto Alves", treatment: "Canal", responsible: "Dr. Rafael", status: "Cancelado" },
-  { time: "10:00", patient: "Maria Oliveira", treatment: "Clareamento", responsible: "Dra. Priscila", status: "Em atendimento" },
+  { time: "10:00", patient: "Maria Oliveira", treatment: "Clareamento", responsible: "Dra. Amanda", status: "Em atendimento" },
   { time: "11:00", patient: "Luciana Prado", treatment: "Ortodontia - manutenção", responsible: "Dr. Rafael", status: "Atrasado" },
   { time: "14:30", patient: "João Pedro Silva", treatment: "Implante", responsible: "Dr. Rafael", status: "Confirmado" },
-  { time: "15:00", patient: "Ana Beatriz Santos", treatment: "Avaliação", responsible: "Dra. Priscila", status: "Agendado" },
-  { time: "16:00", patient: "Carlos Henrique", treatment: "Revisão de restauração", responsible: "Dra. Priscila", status: "Retorno" },
+  { time: "15:00", patient: "Ana Beatriz Santos", treatment: "Avaliação", responsible: "Dra. Amanda", status: "Agendado" },
+  { time: "16:00", patient: "Carlos Henrique", treatment: "Revisão de restauração", responsible: "Dra. Amanda", status: "Retorno" },
 ];
 
 const funnel: FunnelItem[] = [
@@ -98,7 +98,7 @@ export default function Dashboard() {
         <header className="flex items-start justify-between">
           <div>
             <p className="text-[11px] font-semibold text-teal">ÁUREA ODONTO</p>
-            <h1 className="mt-0.5 text-[28px] font-semibold leading-tight">Bom dia, Priscila</h1>
+            <h1 className="mt-0.5 text-[28px] font-semibold leading-tight">Bom dia, Amanda</h1>
             <p className="text-[13px] text-muted">
               Segunda-feira, 5 de outubro · Veja o que precisa da sua atenção hoje.
             </p>

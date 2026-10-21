@@ -1,4 +1,4 @@
-import type {
+﻿import type {
   Patient,
   PlanProcedure,
   PlanStage,
@@ -8,7 +8,6 @@ import type {
   Treatment,
   TreatmentPlan,
   TreatmentRecord,
-  Quote,
 } from "./clinicPatients";
 import { stagesByTreatment } from "./clinicPatients";
 
@@ -48,12 +47,6 @@ function recordStatus(status: PlanStatus): TreatmentRecord["status"] {
   return "Pendente";
 }
 
-function quoteStatus(status: PlanStatus): Quote["status"] {
-  if (status === "Interrompido") return "Recusado";
-  if (status === "Concluído" || status === "Em andamento") return "Aprovado";
-  return "Pendente";
-}
-
 export function syncPatientFromPlans(patient: Patient): Patient {
   const plans = patient.plans ?? [];
   const current = plans.find((item) => item.status === "Em andamento")
@@ -69,13 +62,6 @@ export function syncPatientFromPlans(patient: Patient): Patient {
     startedAt: item.startedAt,
     professional: item.professional,
   }));
-  const quotes: Quote[] = plans.map((item) => ({
-    id: `ORC-${item.id.replace(/\W/g, "").slice(-8)}`,
-    date: item.startedAt,
-    title: item.name,
-    value: planTotal(item),
-    status: quoteStatus(item.status),
-  }));
   return {
     ...patient,
     plans,
@@ -84,7 +70,6 @@ export function syncPatientFromPlans(patient: Patient): Patient {
     responsible: current?.professional ?? patient.responsible,
     value: plans.length ? value : patient.value,
     treatments: treatments.length ? treatments : patient.treatments,
-    quotes: quotes.length ? quotes : patient.quotes,
   };
 }
 
@@ -197,7 +182,7 @@ export function seedPlans(list: Patient[]): Patient[] {
           name: item.name,
           quantity: 1,
           teeth: item.tooth,
-          professional: (item.professional === "Dr. Rafael" ? "Dr. Rafael" : "Dra. Priscila") as Responsible,
+          professional: (item.professional === "Dr. Rafael" ? "Dr. Rafael" : "Dra. Amanda") as Responsible,
           unitValue: patient.procedures.length ? Math.round(patient.value / patient.procedures.length) : patient.value,
           done: 1,
         }))
